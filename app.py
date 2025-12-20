@@ -178,13 +178,18 @@ elif page == "고객 관리":
                 st.write("##### ✍️ 상담 기록 추가")
                 with st.form("new_log_form"):
                     col_c, col_s = st.columns([3, 1])
-                    new_content = col_c.text_area("내용", placeholder="상담 내용을 입력하세요...", height=100)
+                    with col_c:
+                         new_log_date = st.date_input("상담 일시", value=date.today())
+                         new_content = st.text_area("내용", placeholder="상담 내용을 입력하세요...", height=100)
                     
-                    new_next_date = col_s.date_input("다음 연락일", value=None)
-                    new_status = col_s.selectbox("상태", ["접촉중", "제안단계", "협상중", "계약완료", "보류", "완료"])
+                    with col_s:
+                        st.write("") # Spacer to align with date input if needed, or just let it stack
+                        st.write("") 
+                        new_next_date = st.date_input("다음 연락일", value=None)
+                        new_status = st.selectbox("상태", ["접촉중", "제안단계", "협상중", "계약완료", "보류", "완료"])
                     
                     if st.form_submit_button("기록 저장", use_container_width=True):
-                        utils.add_interaction(db, customer.id, new_content, new_next_date, new_status)
+                        utils.add_interaction(db, customer.id, new_content, new_next_date, new_status, log_date=new_log_date)
                         st.success("저장되었습니다!")
                         st.rerun()
 

@@ -47,13 +47,16 @@ def reset_database(db: Session):
         return False
 
 # --- Interaction Operations ---
-def add_interaction(db: Session, customer_id: int, content: str, next_action_date: date, status: str):
+def add_interaction(db: Session, customer_id: int, content: str, next_action_date: date, status: str, log_date: date = None):
+    if log_date is None:
+        log_date = date.today()
+        
     new_interaction = Interaction(
         customer_id=customer_id,
         content=content,
         next_action_date=next_action_date,
         status=status,
-        log_date=date.today()
+        log_date=log_date
     )
     db.add(new_interaction)
     db.commit()
