@@ -591,86 +591,161 @@ elif page == "견적 관리":
                             i_name_sel = st.selectbox("품목 선택", prod_names)
                             i_name = i_name_sel
                         
-                        with col_q:
-                            i_qty = st.number_input("수량", min_value=1, value=1)
-                        
-                        sel_prod = next((p for p in products if p.name == i_name_sel), None)
-                        
                         # Options Logic
                         import json
-                        options_list = []
+                        options_data = None 
+                        is_china_mode = False
+                        
                         if sel_prod and sel_prod.options_json:
                             try:
-                                options_list = json.loads(sel_prod.options_json)
+                                options_data = json.loads(sel_prod.options_json)
+                                if isinstance(options_data, dict) and options_data.get('type') == 'china':
+                                    is_china_mode = True
+                                elif isinstance(options_data, list):
+                                    is_china_mode = False # Domestic List
                             except:
-                                options_list = []
+                                options_data = [] # Fallback
                         
-                        base_price = sel_prod.unit_price if sel_prod else 0
-                        calc_unit_price = base_price
-                        fixed_add_cost = 0 # Cost added to TOTAL, not unit
-                        chosen_opts = []
-                        
-                        with col_opt:
-                            if options_list:
-                                st.write(f"기본가: ₩{base_price:,}")
-                                if len(options_list) > 1:
-                                    opt_cols_gen = st.columns(len(options_list))
-                                else:
-                                    opt_cols_gen = [st.container()]
-                                    
-                                for idx, opt_group in enumerate(options_list):
-                                    g_name = opt_group.get('name', '옵션')
-                                    g_vals = opt_group.get('values', [])
-                                    
-                                    # Create labels map
-                                    val_map = {}
-                                    for v in g_vals:
-                                        label = v['label']
-                                        price = v['price']
-                                        # Show threshold info in label if exists
-                                        th = v.get('threshold_qty', 0)
-                                        th_fixed = v.get('threshold_fixed_price', 0)
+                        # --- CHINA MODE CALCULATION ---
+                        if is_china_mode:
+                            # Load Base Params
+                            c_base = options_data.get('c_base', 0)
+                            c_prod = options_data.get('c_prod', 0)
+                            
+                            st.markdown(f"**🇨🇳 [중국소싱] {i_name} 견적**")
+                            # 1. Quantity First
+                            with col_q:
+                                i_qty = st.number_input("수량", min_value=1, value=500)
+                            
+                            with col_opt:
+                                # China Specific Inputs
+                                st.caption(f"기본정보: 현지 {c_base} / 제작 {c_prod}")
+                                
+                                # Packaging
+                                st.markdown("###### 📦 포장 & 옵션 (현지화폐)")
+                                c_pkg = st.columns(4)
+                                opt_d = c_pkg[0].number_input("대지", min_value=0.0, step=0.1)
+                                opt_b = c_pkg[1].number_input("박스", min_value=0.0, step=0.1)
+                                opt_p = c_pkg[2].number_input("인쇄", min_value=0.0, step=0.1)
+                                opt_h = c_pkg[3].number_input("손잡이", min_value=0.0, step=0.1)
+                                
+                                # Config
+                                st.markdown("###### ⚙️ 환경설정")
+                                c_conf = st.columns(2)
+                                rate = c_conf[0].number_input("환율", value=210.0, step=1.0)
+                                logistics = c_conf[1].number_input("물류배율", value=1.7, step=0.1)
+                                
+                                c_chk = st.columns(2)
+                                is_remote = c_chk[0].checkbox("원격조종", value=False)
+                                is_sky = c_chk[1].checkbox("스카이 (+1,000)", value=False)
+                                
+                                # CALCULATION
+                                # 1. Base Unit Price (KRW)
+                                opt_sum_cny = opt_d + opt_b + opt_p + opt_h
+                                base_unit_krw = (c_base + c_prod + opt_sum_cny) * rate * logistics
+                                
+                                # 2. Sky Adder
+                                if is_sky:
+                                    base_unit_krw += 1000
+                                
+                                # 3. Remote Adder (Total Fixed)
+                                remote_fixed = 0
+                                if is_remote:
+                                    remote_fixed = 550000 if i_qty <= 499 else 1000000
+                                
+                                # 4. Total & Final Unit
+                                total_est = (base_unit_krw * i_qty) + remote_fixed
+                                unit_est = total_est / i_qty if i_qty > 0 else 0
+                                
+                                display_unit_price = int(unit_est)
+                                final_amount = int(total_est)
+                                
+                                # Summary String
+                                opt_strs = []
+                                if opt_d: opt_strs.append(f"대지:{opt_d}")
+                                if opt_b: opt_strs.append(f"박스:{opt_b}")
+                                if opt_p: opt_strs.append(f"인쇄:{opt_p}")
+                                if opt_h: opt_strs.append(f"손잡이:{opt_h}")
+                                if is_sky: opt_strs.append("SKY")
+                                if is_remote: opt_strs.append("원격")
+                                
+                                selected_options_summary = f"[China] {', '.join(opt_strs)} / 환율{rate}"
+                                
+                                st.success(f"개당: ₩{display_unit_price:,} / 총액: ₩{final_amount:,}")
+
+                        # --- DOMESTIC MODE (Legacy) ---
+                        else:
+                            # Domestic Logic
+                            options_list = options_data if isinstance(options_data, list) else []
+                            
+                            with col_q:
+                                i_qty = st.number_input("수량", min_value=1, value=1)
+                            
+                            base_price = sel_prod.unit_price if sel_prod else 0
+                            calc_unit_price = base_price
+                            fixed_add_cost = 0 
+                            chosen_opts = []
+                            
+                            with col_opt:
+                                if options_list:
+                                    st.write(f"기본가: ₩{base_price:,}")
+                                    if len(options_list) > 1:
+                                        opt_cols_gen = st.columns(len(options_list))
+                                    else:
+                                        opt_cols_gen = [st.container()]
                                         
-                                        if th > 0:
-                                           label += f" ({th}개↓ 고정+{th_fixed:,} / ↑ 개당+{price:,})"
-                                        else:
-                                           if price > 0: label += f" (+{price:,})"
+                                    for idx, opt_group in enumerate(options_list):
+                                        g_name = opt_group.get('name', '옵션')
+                                        g_vals = opt_group.get('values', [])
                                         
-                                        val_map[label] = v
-                                    
-                                    with opt_cols_gen[idx]:
-                                        sel_val_str = st.selectbox(f"{g_name}", list(val_map.keys()), key=f"opt_{idx}", label_visibility="visible")
-                                        sel_val = val_map[sel_val_str]
-                                        
-                                        # Price Calculation Strategy
-                                        th = sel_val.get('threshold_qty', 0)
-                                        th_fixed = sel_val.get('threshold_fixed_price', 0)
-                                        v_price = sel_val.get('price', 0)
-                                        
-                                        if th > 0 and i_qty <= th:
-                                            # Below threshold: Add Fixed Cost to Total
-                                            fixed_add_cost += th_fixed
-                                        else:
-                                            # Above threshold or no threshold
-                                            calc_unit_price += v_price
+                                        # Create labels map
+                                        val_map = {}
+                                        for v in g_vals:
+                                            label = v['label']
+                                            price = v['price']
+                                            th = v.get('threshold_qty', 0)
+                                            th_fixed = v.get('threshold_fixed_price', 0)
                                             
-                                        chosen_opts.append(f"{g_name}:{sel_val['label']}")
-                                
-                                display_unit_price = calc_unit_price
-                                # Total = (Unit * Qty) + Fixed
-                                final_amount = (calc_unit_price * i_qty) + fixed_add_cost
-                                
-                                st.write(f"**적용 단가: :blue[₩{display_unit_price:,}]**")
-                                if fixed_add_cost > 0:
-                                    st.caption(f"➕ 고정비 추가: ₩{fixed_add_cost:,}")
-                                
-                                selected_options_summary = ", ".join(chosen_opts)
-                                
-                            else:
-                                st.write(f"단가: ₩{base_price:,}")
-                                display_unit_price = base_price
-                                final_amount = base_price * i_qty
-                                selected_options_summary = ""
+                                            if th > 0:
+                                               label += f" ({th}개↓ 고정+{th_fixed:,} / ↑ 개당+{price:,})"
+                                            else:
+                                               if price > 0: label += f" (+{price:,})"
+                                            
+                                            val_map[label] = v
+                                        
+                                        with opt_cols_gen[idx]:
+                                            sel_val_str = st.selectbox(f"{g_name}", list(val_map.keys()), key=f"opt_{idx}", label_visibility="visible")
+                                            sel_val = val_map[sel_val_str]
+                                            
+                                            # Price Calculation Strategy
+                                            th = sel_val.get('threshold_qty', 0)
+                                            th_fixed = sel_val.get('threshold_fixed_price', 0)
+                                            v_price = sel_val.get('price', 0)
+                                            
+                                            if th > 0 and i_qty <= th:
+                                                # Below threshold: Add Fixed Cost to Total
+                                                fixed_add_cost += th_fixed
+                                            else:
+                                                # Above threshold or no threshold
+                                                calc_unit_price += v_price
+                                                
+                                            chosen_opts.append(f"{g_name}:{sel_val['label']}")
+                                    
+                                    display_unit_price = calc_unit_price
+                                    # Total = (Unit * Qty) + Fixed
+                                    final_amount = (calc_unit_price * i_qty) + fixed_add_cost
+                                    
+                                    st.write(f"**적용 단가: :blue[₩{display_unit_price:,}]**")
+                                    if fixed_add_cost > 0:
+                                        st.caption(f"➕ 고정비 추가: ₩{fixed_add_cost:,}")
+                                    
+                                    selected_options_summary = ", ".join(chosen_opts)
+                                    
+                                else:
+                                    st.write(f"단가: ₩{base_price:,}")
+                                    display_unit_price = base_price
+                                    final_amount = base_price * i_qty
+                                    selected_options_summary = ""
                     else:
                         st.info("등록된 제품이 없습니다.")
                         i_name = None
@@ -777,153 +852,112 @@ elif page == "견적 관리":
                 
                 final_p_price = 0
                 p_desc_auto = ""
-                
-                if sourcing_type == "국내":
-                    # Domestic
+                            if sourcing_type == "국내":
+                    # Domestic Logic: Standard Price + Option Groups
                     p_price = st.number_input("기본 단가 (KRW)", min_value=0, step=100)
                     final_p_price = p_price
                     p_desc_auto = "국내 소싱 제품"
                     
-                else:
-                    # China: Calculation Logic
-                    st.markdown("**🇨🇳 중국 소싱 단가 계산**")
+                    # Option Groups UI (Domestic Only)
+                    st.divider()
+                    st.markdown("#### 🔧 옵션 구성 (국내 전용)")
+                    st.caption("필요한 경우 옵션 그룹을 추가하세요. (예: 사이즈, 색상)")
                     
-                    # 1. Base Inputs
-                    c1, c2, c3 = st.columns(3)
-                    c_base = c1.number_input("현지 단가 (RMB/USD)", min_value=0.0, step=0.1, format="%.2f")
-                    c_prod = c2.number_input("제작비 (현지화폐)", min_value=0.0, step=0.1, value=0.0, format="%.2f")
-                    c_qty = c3.number_input("예상 수량 (개)", min_value=1, step=10, value=500)
-
-                    # 2. Packaging Options
-                    st.markdown("###### 📦 포장 옵션 (현지화폐)")
-                    p1, p2, p3, p4 = st.columns(4)
-                    opt_daeji = p1.number_input("대지", min_value=0.0, step=0.1, value=0.0)
-                    opt_box = p2.number_input("박스", min_value=0.0, step=0.1, value=0.0)
-                    opt_print = p3.number_input("박스인쇄", min_value=0.0, step=0.1, value=0.0)
-                    opt_handle = p4.number_input("손잡이컬러", min_value=0.0, step=0.1, value=0.0)
-                    
-                    c_options_sum = opt_daeji + opt_box + opt_print + opt_handle
-
-                    # 3. Constants & Flags
-                    st.markdown("###### ⚙️ 설정 및 추가 옵션")
-                    k1, k2 = st.columns(2)
-                    c_rate = k1.number_input("환율 (Exchange Rate)", min_value=0.0, step=1.0, value=210.0)
-                    c_logistics = k2.number_input("물류비 배율", min_value=1.0, step=0.05, value=1.7)
-                    
-                    chk1, chk2 = st.columns(2)
-                    is_remote = chk1.checkbox("원격조종 (+고정비)", value=False)
-                    is_sky = chk2.checkbox("스카이 (+1,000원/개)", value=False)
-
-                    # --- Calculation ---
-                    # Formula: (Local + Manuf + Option) * Rate * Logistics
-                    base_unit_price_krw = (c_base + c_prod + c_options_sum) * c_rate * c_logistics
-                    
-                    # Sky Option (+1000 per unit)
-                    if is_sky:
-                        base_unit_price_krw += 1000
-                    
-                    # Remote Option (Fixed Cost)
-                    remote_cost_total = 0
-                    if is_remote:
-                        if c_qty <= 499:
-                            remote_cost_total = 550000
-                        else:
-                            remote_cost_total = 1000000
-                    
-                    # Final Totals
-                    total_estimate = (base_unit_price_krw * c_qty) + remote_cost_total
-                    final_p_price = int(total_estimate / c_qty) if c_qty > 0 else 0
-                    
-                    # Display Result
-                    st.info(f"""
-                    **📊 견적 결과 (수량 {c_qty:,}개 기준)**
-                    - 기본 단가(물류포함): ₩{int(base_unit_price_krw):,}
-                    - 원격조종 총 비용: ₩{remote_cost_total:,}
-                    - **최종 예상 단가: ₩{final_p_price:,}**
-                    - 총 예상 금액: ₩{int(total_estimate):,}
-                    """)
-                    
-                    st.info(f"🧮 계산된 단가: **₩{final_p_price:,}**")
-                    p_desc_auto = f"[중국소싱] (현지:{c_base} + 제작:{c_prod}) * 환율:{c_rate} * 물류:{c_logistics}"
-
-                st.markdown("---")
-                st.markdown("**옵션 구성**")
-                
-                with st.expander("옵션 그룹 추가/관리", expanded=True):
-                    with st.form("add_opt_form", clear_on_submit=True):
-                        st.caption("고급설정: 특정 수량 이하일 때 고정비 부과")
-                        c1, c2 = st.columns(2)
-                        o_grp = c1.text_input("그룹명", value="사이즈")
-                        o_lbl = c2.text_input("선택값", value="기본")
-                        
-                        c3, c4 = st.columns(2)
-                        o_price = c3.number_input("추가 단가 (개당)", step=100, value=0)
-                        
-                        # Threshold Logic
-                        use_th = st.checkbox("수량 조건 사용 (예: 499개 이하시 고정비)")
-                        th_qty = 0
-                        th_fixed = 0
-                        
-                        def_th = 499 if sourcing_type == "국내" else 500
-                        
-                        if use_th:
-                             c5, c6 = st.columns(2)
-                             th_qty = c5.number_input("기준 수량 (이하)", value=def_th, step=1)
-                             th_fixed = c6.number_input("고정비용 (Total)", value=250000, step=10000)
-                        
-                        if st.form_submit_button("옵션 규칙 추가"):
-                            if o_grp and o_lbl:
+                    with st.expander("∨ 옵션 그룹 추가/관리", expanded=True):
+                         # Existing Option Builder Logic
+                        if 'new_prod_opts' not in st.session_state:
+                            st.session_state.new_prod_opts = []
+                            
+                        # Simple Form to add Option Group
+                        with st.form("add_opt_group"):
+                            st.write("고급설정: 특정 수량 이하일 때 고정비 부과")
+                            col_n, col_v = st.columns(2)
+                            og_name = col_n.text_input("그룹명 (예: 사이즈)")
+                            og_val = col_v.text_input("선택값 (예: XL)")
+                            
+                            og_price = st.number_input("추가 단가 (개당)", step=100)
+                            
+                            # Threshold Logic
+                            use_threshold = st.checkbox("수량 조건 사용 (예: 499개 이하시 고정비)")
+                            th_qty = 0
+                            th_fix = 0
+                            if use_threshold:
+                                c_th1, c_th2 = st.columns(2)
+                                th_qty = c_th1.number_input("기준 수량 (이하)", min_value=1, value=499)
+                                th_fix = c_th2.number_input("고정비용 추가 (₩)", step=1000, value=100000)
+                            
+                            if st.form_submit_button("옵션 규칙 추가"):
+                                # Check if group exists, append value
                                 found = False
-                                new_val = {
-                                    "label": o_lbl, 
-                                    "price": o_price,
-                                    "threshold_qty": th_qty if use_th else 0,
-                                    "threshold_fixed_price": th_fixed if use_th else 0
-                                }
-                                
                                 for grp in st.session_state.new_prod_opts:
-                                    if grp['name'] == o_grp:
-                                        grp['values'].append(new_val)
+                                    if grp['name'] == og_name:
+                                        grp['values'].append({
+                                            "label": og_val,
+                                            "price": og_price,
+                                            "threshold_qty": th_qty if use_threshold else 0,
+                                            "threshold_fixed_price": th_fix if use_threshold else 0
+                                        })
                                         found = True
                                         break
                                 if not found:
                                     st.session_state.new_prod_opts.append({
-                                        "name": o_grp,
-                                        "values": [new_val]
+                                        "name": og_name,
+                                        "values": [{
+                                            "label": og_val,
+                                            "price": og_price,
+                                            "threshold_qty": th_qty if use_threshold else 0,
+                                            "threshold_fixed_price": th_fix if use_threshold else 0
+                                        }]
                                     })
                                 st.rerun()
-                            else:
-                                st.warning("그룹명과 선택값을 입력하세요.")
 
-                    if st.session_state.new_prod_opts:
-                        st.caption("설정된 옵션:")
-                        for grp_idx, grp in enumerate(st.session_state.new_prod_opts):
-                            st.write(f"**📂 {grp['name']}**")
-                            for val_idx, val in enumerate(grp['values']):
-                                c_show, c_del = st.columns([4, 1])
-                                info = f"- {val['label']} (+{val['price']:,})"
-                                if val.get('threshold_qty', 0) > 0:
-                                    info += f" [조건: {val['threshold_qty']}개↓ 고정 {val['threshold_fixed_price']:,}]"
-                                c_show.text(info)
-                                if c_del.button("❌", key=f"del_opt_{grp_idx}_{val_idx}"):
-                                    grp['values'].pop(val_idx)
-                                    if not grp['values']:
-                                        st.session_state.new_prod_opts.pop(grp_idx)
+                        # Display Added Options
+                        if st.session_state.new_prod_opts:
+                            st.write("---")
+                            st.write("현재 등록된 옵션 목록:")
+                            for g_idx, grp in enumerate(st.session_state.new_prod_opts):
+                                st.write(f"**[{grp['name']}]**")
+                                for v in grp['values']:
+                                    cond = ""
+                                    if v.get('threshold_qty') > 0:
+                                        cond = f" (조건: {v['threshold_qty']}개 ↓ +{v['threshold_fixed_price']:,})"
+                                    st.caption(f"- {v['label']} : +{v['price']:,}{cond}")
+                                if st.button(f"그룹 삭제 ({grp['name']})", key=f"del_g_{g_idx}"):
+                                    st.session_state.new_prod_opts.pop(g_idx)
                                     st.rerun()
-                
-                st.markdown("---")
-                
+                                    
+                else:
+                    # China Logic: Save Base Stats Only
+                    st.info("중국 제품은 '견적 작성' 탭에서 세부 옵션(환율, 물류비, 포장 등)을 설정합니다.")
+                    st.markdown("**🇨🇳 중국 소싱 기본 정보**")
+                    
+                    c1, c2 = st.columns(2)
+                    c_base = c1.number_input("현지 단가 (RMB/USD)", min_value=0.0, step=0.1, format="%.2f")
+                    c_prod = c2.number_input("제작비 (현지화폐)", min_value=0.0, step=0.1, value=0.0, format="%.2f")
+                    
+                    final_p_price = 0 # Will be calculated at Quote time
+                    p_desc_auto = f"[중국소싱] 현지단가:{c_base} + 제작비:{c_prod}"
+                    
+                    # For China, we don't use the Option Group Builder
+                    # We will save the parameters into 'options_json' as a Dict
+                    st.session_state.new_prod_opts = {
+                        "type": "china",
+                        "c_base": c_base,
+                        "c_prod": c_prod
+                    }
+
+                st.write("---")
                 if st.button("제품 등록 완료", type="primary", use_container_width=True):
-                    if p_name and final_p_price >= 0:
-                        res = utils.create_product(db, p_name, final_p_price, p_cat, p_desc_auto, options=st.session_state.new_prod_opts)
-                        if res:
-                            st.success(f"'{p_name}' 등록 완료")
-                            st.session_state.new_prod_opts = [] # Init
-                            st.rerun()
-                        else:
-                            st.error("이미 존재하는 제품명입니다.")
+                    if p_name:
+                        import json
+                        opts_json = json.dumps(st.session_state.new_prod_opts, ensure_ascii=False)
+                        
+                        utils.add_product(db, p_name, p_cat, final_p_price, p_desc_auto, options_json=opts_json)
+                        st.success(f"'{p_name}' 등록 완료!")
+                        st.session_state.new_prod_opts = [] # Reset
+                        st.rerun()
                     else:
-                        st.error("제품명과 가격을 확인해주세요.")
+                        st.error("제품명을 입력하세요.")
         
         with col_view:
             st.markdown("#### 📋 제품 목록")
@@ -936,12 +970,6 @@ elif page == "견적 관리":
                         if p.options_json and p.options_json != "[]":
                             import json
                             try:
-                                o_list = json.loads(p.options_json)
-                                st.write("**옵션 상세:**")
-                                for grp in o_list:
-                                    st.write(f"_{grp['name']}_")
-                                    for v in grp['values']:
-                                        details = f"+{v['price']:,}"
                                         if v.get('threshold_qty'):
                                             details += f" (≤{v['threshold_qty']}개: 고정 {v['threshold_fixed_price']:,})"
                                         st.write(f"- {v['label']}: {details}")
