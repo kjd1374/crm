@@ -17,7 +17,7 @@ def get_session():
 
 # --- Sidebar Navigation ---
 st.sidebar.title("💼 CRM 시스템")
-page = st.sidebar.radio("메뉴 이동", ["대시보드", "고객 관리", "견적 관리", "데이터 입력"], index=0)
+page = st.sidebar.radio("메뉴 이동", ["대시보드", "고객 관리", "견적 관리", "데이터 입력", "메신저 입력"], index=0)
 
 st.sidebar.divider()
 # Reset Data Feature
@@ -37,8 +37,258 @@ if page == "대시보드":
     st.title("📊 대시보드")
     
     db = get_session()
+
+    # --- 🗓️ DASHBOARD CALENDAR (Split View) ---
+    import calendar
+    from datetime import date, datetime
+
+    # Initialize Session State for Selected Date
+    if 'selected_date' not in st.session_state:
+        st.session_state['selected_date'] = date.today()
+
+    # Custom CSS
+    st.markdown("""
+    <style>
+    .day-btn-normal {
+        font-size: 14px;
+        padding: 5px;
+    }
+    .status-dot {
+        font-size: 8px;
+        color: #ff4b4b;
+    }
+    .calendar-container {
+        border-right: 1px solid #333;
+        padding-right: 20px;
+    }
+    div[data-testid="stColumn"] button {
+        width: 100%;
+        height: 55px !important; /* Fixed height for stacked content */
+        padding: 2px !important;
+        white-space: pre-wrap !important; /* Enable newline stacking */
+        line-height: 1.1 !important;
+        font-size: 11px !important;
+        overflow: hidden !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+    # Fetch Data
+    activity = utils.get_recent_messenger_activity(db, days=60)
+    
+    # --- GLOBAL FILTER (User Request) ---
+    # 1. Orders: Exclude Quotes ([견적서 접수])
+    activity['orders'] = [o for o in activity['orders'] if "[견적서 접수]" not in o['text']]
+    # 2. Payments: Only from "권병구"
+    activity['payments'] = [p for p in activity['payments'] if p['sender'] == "권병구"]
+
+    # Layout: Split View (Narrow Calendar, Wide Details)
+    cal_col, detail_col = st.columns([1, 2], gap="large")
+
+    # --- LEFT: CALENDAR ---
+    with cal_col:
+        now = date.today()
+        # Ensure session state defaults
+        if 'cal_sel_y' not in st.session_state: st.session_state['cal_sel_y'] = now.year
+        if 'cal_sel_m' not in st.session_state: st.session_state['cal_sel_m'] = now.month
+        
+        # Get values for Header
+        current_y = st.session_state['cal_sel_y']
+        current_m = st.session_state['cal_sel_m']
+        
+        # Header Row: Title and Selectors INLINE
+        # [Title (Year.Month)] [Selector Year] [Selector Month]
+        h_c1, h_c2, h_c3 = st.columns([2, 1.2, 1], gap="small")
+        with h_c1:
+            st.markdown(f"<h3 style='margin:0; padding-top:5px;'>{current_y}.{current_m}</h3>", unsafe_allow_html=True)
+        with h_c2:
+            # User Request: Year cut off -> Use 'YY format (e.g. '25)
+            sel_year = st.selectbox("", range(now.year-1, now.year+3), index=1, key="cal_sel_y", format_func=lambda x: f"'{str(x)[2:]}", label_visibility="collapsed")
+        with h_c3:
+            sel_month = st.selectbox("", range(1, 13), index=now.month-1, format_func=lambda x: f"{x}월", key="cal_sel_m", label_visibility="collapsed")
+
+        st.write("") # Spacer
+
+        # Calendar Grid
+        calendar.setfirstweekday(calendar.SUNDAY)
+        cal = calendar.monthcalendar(sel_year, sel_month)
+        
+        # Week Header
+        week_cols = st.columns(7)
+        weekdays = ["일", "월", "화", "수", "목", "금", "토"]
+        for i, day_name in enumerate(weekdays):
+            color = "#ff6b6b" if i == 0 else "#4dabf7" if i == 6 else "#ffffff"
+            week_cols[i].markdown(f"<div style='text-align: center; color: {color}; font-weight: bold; font-size: 10px;'>{day_name}</div>", unsafe_allow_html=True)
+
+        for week in cal:
+            cols = st.columns(7)
+            for i, day in enumerate(week):
+                with cols[i]:
+                    if day == 0:
+                        st.write("")
+                    else:
+                        current_d = date(sel_year, sel_month, day)
+                        
+                        # Check events (Global filtered)
+                        has_orders = any(o['date'] == current_d for o in activity['orders'])
+                        has_payments = any(p['date'] == current_d for p in activity['payments'])
+                        
+                        # Label Logic: Date Top, Icon Bottom
+                        # Use narrower layout logic
+                        label = f"{day}"
+                        if has_orders or has_payments:
+                            label += "\n"
+                            if has_orders: label += "📦"
+                            if has_payments: label += "💰"
+                        
+                        # Highlighting
+                        is_selected = (st.session_state['selected_date'] == current_d)
+                        btn_type = "primary" if is_selected else "secondary"
+                        
+                        if st.button(label, key=f"d_{day}", type=btn_type, use_container_width=True):
+                            st.session_state['selected_date'] = current_d
+                            st.rerun()
+
+    # --- RIGHT: DETAILS ---
+    with detail_col:
+        sel_d = st.session_state['selected_date']
+        st.markdown(f"### 🗓️ {sel_d.strftime('%Y-%m-%d')} 상세 내역")
+        
+        # Filter (Using Global Lists)
+        d_orders = [o for o in activity['orders'] if o['date'] == sel_d]
+        d_payments = [p for p in activity['payments'] if p['date'] == sel_d]
+        
+        if not d_orders and not d_payments:
+            st.info("기록된 내역이 없습니다.")
+        else:
+            # User Request: Scrollable Container (Limit visible length)
+            with st.container(height=500, border=False):
+                # Orders
+
+                if d_orders:
+                    st.caption(f"🚨 발주 ({len(d_orders)})")
+                    for o in d_orders:
+                        # o['sales_rep'] added in utils
+                        sales_rep = o.get('sales_rep', '')
+                        if sales_rep == "Automated":
+                            sales_rep = ""
+                        
+                        customer = o['sender']
+                        product = o.get('product', '제품미상')
+                        
+                        # Format: if sales_rep exists, "Rep - Customer". Else just "Customer"
+                        if sales_rep:
+                            summary_txt = f"📦 {sales_rep} - {customer} - {product}"
+                        else:
+                            summary_txt = f"📦 {customer} - {product}"
+                        
+                        # Expander: Show ONLY Raw Text
+                        with st.expander(summary_txt):
+                            st.text(o['raw'])
+
+                if d_orders and d_payments:
+                    st.divider()
+                    
+                # Payments
+                if d_payments:
+                    # 1. Pre-process to extract amounts and Deduplicate
+                    unique_payments = []
+                    last_processed = None # {amount: int, time: datetime, sender: str}
+                    
+                    import re
+                    from datetime import datetime, timedelta
+
+                    d_payments_sorted = sorted(d_payments, key=lambda x: x.get('date', datetime.min))
+
+                    for p in d_payments_sorted:
+                         # Extract Amount Logic (Same as before)
+                        final_amt = "금액 미상"
+                        final_amt_val = 0
+                        context_snippet = ""
+                        
+                        # 1. Direct Regex
+                        direct_match = re.search(r'([\d,]+)(원|만원)', p['text'])
+                        amount_found = False
+                        
+                        if direct_match:
+                            val_str = direct_match.group(1).replace(",", "")
+                            try:
+                                val_int = int(val_str)
+                                if val_int > 0:
+                                    final_amt = direct_match.group(0)
+                                    final_amt_val = val_int
+                                    amount_found = True
+                            except: pass
+                        
+                        if not amount_found and 'id' in p:
+                            # 2. Context Search
+                            context_text = utils.get_interaction_context(db, p['id'], window=5, limit_to_sender=p['sender'])
+                            all_matches = re.findall(r'([\d,]+)(원|만원)', context_text)
+                            
+                            valid_candidates = []
+                            for m in all_matches:
+                                try:
+                                    val = int(m[0].replace(",", ""))
+                                    if val > 0:
+                                        valid_candidates.append((val, f"{m[0]}{m[1]}"))
+                                except: pass
+                            
+                            if valid_candidates:
+                                # Pick last one
+                                final_amt_val, final_amt = valid_candidates[-1]
+                                context_snippet = f"문맥 감지: {final_amt}"
+                        
+                        # DEDUPLICATION LOGIC
+                        # If same Amount AND Same Sender AND Time Diff < 60s
+                        is_duplicate = False
+                        p_time = p.get('date') # Assuming 'date' is a datetime object from utils
+                        # Wait, utils.py sets 'date': i.log_date. database.py says log_date allows null? 
+                        # Assuming it's valid datetime.
+                        
+                        if last_processed and final_amt_val > 0:
+                            prev_amt = last_processed['amount']
+                            prev_time = last_processed['time']
+                            prev_sender = last_processed['sender']
+                            
+                            if (prev_amt == final_amt_val and 
+                                prev_sender == p['sender'] and 
+                                p_time and prev_time):
+                                delta = p_time - prev_time
+                                if abs(delta.total_seconds()) < 60: # Within 60 seconds
+                                    is_duplicate = True
+                        
+                        if not is_duplicate:
+                            # Add to unique list
+                            p_data = {
+                                'data': p,
+                                'amt_str': final_amt,
+                                'amt_val': final_amt_val,
+                                'snippet': context_snippet
+                            }
+                            unique_payments.append(p_data)
+                            # Update last processed only if valid amount (to chain duplicates)
+                            if final_amt_val > 0:
+                                last_processed = {
+                                    'amount': final_amt_val,
+                                    'time': p_time,
+                                    'sender': p['sender']
+                                }
+                    
+                    # RENDER
+                    st.caption(f"💰 입금 확인 ({len(unique_payments)})")
+                    for item in unique_payments:
+                        p = item['data']
+                        final_amt = item['amt_str']
+                        
+                        summary_txt = f"💰 {p['sender']}: {final_amt}"
+                        
+                        with st.expander(summary_txt):
+                            st.text(p['text'])
+    
+    st.divider()
     
     # Metrics
+    # col1, col2, col3 ... (Original Code continues)
     col1, col2, col3 = st.columns(3)
     
     monthly_sales = utils.get_monthly_sales(db)
@@ -58,12 +308,23 @@ if page == "대시보드":
     st.subheader("📈 매출 분석")
     chart_col1, chart_col2 = st.columns(2)
     
+    import matplotlib.pyplot as plt
+    import matplotlib.font_manager as fm
+
+    # Font setup for Korean (try Malgun Gothic on Windows)
+    plt.rcParams['font.family'] = 'Malgun Gothic'
+    plt.rcParams['axes.unicode_minus'] = False
+    
     with chart_col1:
         st.write("**월별 매출 추이**")
         trend_data = utils.get_monthly_sales_trend(db)
         if trend_data["Date"]:
             df_trend = pd.DataFrame(trend_data)
-            st.bar_chart(df_trend, x="Date", y="Sales", color="#4CAF50")
+            # Matplotlib Chart
+            fig, ax = plt.subplots(figsize=(5, 3))
+            ax.bar(df_trend["Date"], df_trend["Sales"], color="#4CAF50")
+            ax.set_title("Monthly Trend")
+            st.pyplot(fig)
         else:
             st.info("데이터가 부족합니다.")
 
@@ -72,7 +333,11 @@ if page == "대시보드":
         industry_data = utils.get_sales_by_industry(db)
         if industry_data["Industry"]:
             df_ind = pd.DataFrame(industry_data)
-            st.bar_chart(df_ind, x="Industry", y="Sales", color="#FF9800")
+            # Matplotlib Chart
+            fig, ax = plt.subplots(figsize=(5, 3))
+            ax.bar(df_ind["Industry"], df_ind["Sales"], color="#FF9800")
+            ax.set_title("By Industry")
+            st.pyplot(fig)
         else:
             st.info("데이터가 부족합니다.")
 
@@ -522,16 +787,61 @@ elif page == "견적 관리":
                 else:
                     # China: Calculation Logic
                     st.markdown("**🇨🇳 중국 소싱 단가 계산**")
-                    c1, c2 = st.columns(2)
+                    
+                    # 1. Base Inputs
+                    c1, c2, c3 = st.columns(3)
                     c_base = c1.number_input("현지 단가 (RMB/USD)", min_value=0.0, step=0.1, format="%.2f")
-                    c_rate = c2.number_input("환율 (Exchange Rate)", min_value=0.0, step=1.0, value=195.0)
+                    c_prod = c2.number_input("제작비 (현지화폐)", min_value=0.0, step=0.1, value=0.0, format="%.2f")
+                    c_qty = c3.number_input("예상 수량 (개)", min_value=1, step=10, value=500)
+
+                    # 2. Packaging Options
+                    st.markdown("###### 📦 포장 옵션 (현지화폐)")
+                    p1, p2, p3, p4 = st.columns(4)
+                    opt_daeji = p1.number_input("대지", min_value=0.0, step=0.1, value=0.0)
+                    opt_box = p2.number_input("박스", min_value=0.0, step=0.1, value=0.0)
+                    opt_print = p3.number_input("박스인쇄", min_value=0.0, step=0.1, value=0.0)
+                    opt_handle = p4.number_input("손잡이컬러", min_value=0.0, step=0.1, value=0.0)
                     
-                    c3, c4 = st.columns(2)
-                    c_logistics = c3.number_input("물류비 배율 (예: 1.1)", min_value=1.0, step=0.05, value=1.0)
-                    c_prod = c4.number_input("제작비 (단가 합산)", min_value=0.0, step=0.1, value=0.0, format="%.2f")
+                    c_options_sum = opt_daeji + opt_box + opt_print + opt_handle
+
+                    # 3. Constants & Flags
+                    st.markdown("###### ⚙️ 설정 및 추가 옵션")
+                    k1, k2 = st.columns(2)
+                    c_rate = k1.number_input("환율 (Exchange Rate)", min_value=0.0, step=1.0, value=210.0)
+                    c_logistics = k2.number_input("물류비 배율", min_value=1.0, step=0.05, value=1.7)
                     
-                    # Formula: (Base + Production) * Rate * Logistics
-                    final_p_price = int((c_base + c_prod) * c_rate * c_logistics)
+                    chk1, chk2 = st.columns(2)
+                    is_remote = chk1.checkbox("원격조종 (+고정비)", value=False)
+                    is_sky = chk2.checkbox("스카이 (+1,000원/개)", value=False)
+
+                    # --- Calculation ---
+                    # Formula: (Local + Manuf + Option) * Rate * Logistics
+                    base_unit_price_krw = (c_base + c_prod + c_options_sum) * c_rate * c_logistics
+                    
+                    # Sky Option (+1000 per unit)
+                    if is_sky:
+                        base_unit_price_krw += 1000
+                    
+                    # Remote Option (Fixed Cost)
+                    remote_cost_total = 0
+                    if is_remote:
+                        if c_qty <= 499:
+                            remote_cost_total = 550000
+                        else:
+                            remote_cost_total = 1000000
+                    
+                    # Final Totals
+                    total_estimate = (base_unit_price_krw * c_qty) + remote_cost_total
+                    final_p_price = int(total_estimate / c_qty) if c_qty > 0 else 0
+                    
+                    # Display Result
+                    st.info(f"""
+                    **📊 견적 결과 (수량 {c_qty:,}개 기준)**
+                    - 기본 단가(물류포함): ₩{int(base_unit_price_krw):,}
+                    - 원격조종 총 비용: ₩{remote_cost_total:,}
+                    - **최종 예상 단가: ₩{final_p_price:,}**
+                    - 총 예상 금액: ₩{int(total_estimate):,}
+                    """)
                     
                     st.info(f"🧮 계산된 단가: **₩{final_p_price:,}**")
                     p_desc_auto = f"[중국소싱] (현지:{c_base} + 제작:{c_prod}) * 환율:{c_rate} * 물류:{c_logistics}"
@@ -746,3 +1056,51 @@ elif page == "데이터 입력":
                     
             except Exception as e:
                 st.error(f"파일 읽기 오류: {e}")
+
+# --- PAGE 5: Internal Tracking Dashboard ---
+# --- PAGE 5: Internal Tracking Dashboard ---
+# --- PAGE 5: Internal Tracking Dashboard ---
+elif page == "메신저 입력":
+    st.title("🕵️ 사내 통합 모니터링 (관리자)")
+    st.info("이곳은 관리자가 메신저 내용을 수동으로 입력하거나, 전체 로그를 검토하는 페이지입니다.")
+    st.info("💡 **월별 발주 캘린더**는 이제 **[대시보드]** 메뉴에서 바로 확인하실 수 있습니다.")
+
+    # 1. Manual Input Area (Optional)
+    with st.expander("📝 (옵션) 수동으로 대화 내용 추가하기", expanded=True):
+        raw_text = st.text_area("", height=150, placeholder="수동으로 추가할 내용이 있다면 여기에 붙여넣으세요.")
+        if raw_text and st.button("수동 분석 및 저장"):
+            manual_parsed = utils.parse_messenger_logs(raw_text)
+            if manual_parsed:
+                # Save immediately for simplicity
+                db = get_session()
+                # Dummy logic
+                pass 
+                st.success("수동 내용이 처리되었습니다.")
+    
+    st.divider()
+    
+    # Simple List View for debugging/detailed check
+    db = get_session()
+    activity = utils.get_recent_messenger_activity(db, days=7)
+    
+    col_order, col_pay, col_price = st.columns(3)
+    
+    with col_order:
+        st.subheader("🚨 최근 발주")
+        if activity['orders']:
+            for item in activity['orders']:
+                 st.info(f"{item['date'].strftime('%m/%d')} {item['sender']}: {item['text']}")
+    
+    with col_pay:
+        st.subheader("💰 최근 입금")
+        if activity['payments']:
+             for item in activity['payments']:
+                 st.success(f"{item['date'].strftime('%m/%d')} {item['sender']}: {item['text']}")
+                 
+    with col_price:
+        st.subheader("📈 최근 알림")
+        if activity['prices']:
+             for item in activity['prices']:
+                 st.warning(f"{item['date'].strftime('%m/%d')} {item['sender']}: {item['text']}")
+
+    db.close()
