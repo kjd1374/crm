@@ -33,6 +33,216 @@ def update_interaction_status(db: Session, interaction_id: int, new_status: str)
         return True
     return False
 
+
+# --- MESSENGER RULES ---
+MESSENGER_RULES = [
+    # 1. 🚨 발주 (Order)
+    {"type": "ORDER", "keywords": ["발주", "주문"], "label": "🚨 발주"},
+    # 2. 💰 입금 (Payment)
+    {"type": "PAYMENT", "keywords": ["입금", "송금", "완납", "보냈습니다", "이체"], "label": "💰 입금"},
+    # 3. 📈 단가/가격 (Price)
+    {"type": "PRICE", "keywords": ["단가", "가격", "인상", "인하", "원가", "견적"], "label": "📈 단가"},
+]
+
+def parse_messenger_logs(text):
+    """
+    Parses raw messenger text into structure data for tracking.
+    Returns: List of dicts 
+    """
+    import re
+    lines = text.splitlines()
+    header_pattern = re.compile(r"^\[(\d{4}-\d{2}-\d{2}) (오전|오후) (\d{1,2}:\d{2})\] (.*)")
+    
+    parsed_msgs = []
+    current_msg = None
+    
+    for line in lines:
+        line = line.strip()
+        if not line: continue
+        
+        match = header_pattern.match(line)
+        if match:
+            # Save previous
+            if current_msg:
+                parsed_msgs.append(current_msg)
+            
+            # Start new
+            date_str, ampm, time_str, sender = match.groups()
+            hour, minute = map(int, time_str.split(':'))
+            if ampm == "오후" and hour != 12: hour += 12
+            elif ampm == "오전" and hour == 12: hour = 0
+            
+            try:
+                dt = datetime.strptime(f"{date_str} {hour:02d}:{minute:02d}:00", "%Y-%m-%d %H:%M:%S")
+            except:
+                dt = datetime.now()
+                
+            current_msg = {"date": dt, "sender": sender.strip(), "text": "", "type": "ETC", "value": 0, "extra": ""}
+        else:
+            if current_msg:
+                current_msg["text"] += "\n" + line
+    
+    if current_msg:
+        parsed_msgs.append(current_msg)
+        
+    # Analyze Types & Values
+    results = []
+    for msg in parsed_msgs:
+        txt = msg["text"].strip()
+        msg["text"] = txt
+        
+        # Categorize
+        msg_type = "ETC"
+        for rule in MESSENGER_RULES:
+            if any(k in txt for k in rule["keywords"]):
+                msg_type = rule["type"]
+                break
+        
+        msg["type"] = msg_type
+        # Add label
+        msg["type_label"] = next((r["label"] for r in MESSENGER_RULES if r["type"] == msg_type), "기타")
+        
+        # Logic for Values (Quantity or Amount)
+        # Regex to find numbers (e.g., 100개, 100,000원, 30만원)
+        import re
+        
+        # 1. 🚨 Order: Find simple quantities (100개, 100box, etc)
+        if msg_type == "ORDER":
+            # Finding digits
+            nums = re.findall(r'(\d+)\s*(?:개|박스|box|ea)?', txt, re.IGNORECASE)
+            # Filter out timestamps/dates if possible? For now simple logic.
+            # Usually the number adjacent to the keyword or product is key.
+            # Heuristic: largest integer < 10000 (likely qty) or explicit '개'
+            
+            # Better regex for explicitly quantity
+            qty_match = re.search(r'(\d+)\s*(?:개|박스|box|ea)', txt, re.IGNORECASE)
+            if qty_match:
+                msg["value"] = int(qty_match.group(1))
+            else:
+                 # Fallback: Just grab first digit
+                 nums = re.findall(r'\d+', txt)
+                 msg["value"] = int(nums[0]) if nums else 1
+
+        # 2. 💰 Payment / 📈 Price: Find Currency
+        elif msg_type == "PAYMENT" or msg_type == "PRICE":
+            # Try to find Won (10000원, 10,000, 30만원)
+            # "만원" unit
+            match_man = re.search(r'(\d+)\s*만\s*원?', txt)
+            if match_man:
+                msg["value"] = int(match_man.group(1)) * 10000
+            else:
+                # Standard digits with optional comma
+                # Exclude dates (2024-...)
+                clean_txt = re.sub(r'\d{4}-\d{2}-\d{2}', '', txt)
+                
+                # Look for numbers ending with '원' or simple large numbers (>1000)
+                match_won = re.search(r'([\d,]+)\s*원', clean_txt)
+                if match_won:
+                    val_str = match_won.group(1).replace(',', '')
+                    if val_str:
+                        msg["value"] = int(val_str)
+                else:
+                    # Just find largest number in text?
+                    all_nums = re.findall(r'[\d,]+', clean_txt)
+                    candidates = []
+                    for n in all_nums:
+                        try:
+                            candidates.append(int(n.replace(',', '')))
+                        except: pass
+                    if candidates:
+                        msg["value"] = max(candidates) # Assume largest number is the amount
+        
+        results.append(msg)
+        
+    return results
+
+def get_recent_messenger_activity(db: Session, days=7):
+    """
+    Fetch recent auto-processed messenger logs from DB.
+    Returns dict with keys: 'orders', 'payments', 'prices', 'others'
+    """
+    import datetime
+    cutoff = datetime.date.today() - datetime.timedelta(days=days)
+    
+    # 1. Orders (Manual or Batch)
+    # Filter by checking if note contains "원본:" or just all recent orders?
+    # Let's show all recent orders for safety
+    orders = db.query(Order).filter(Order.order_date >= cutoff).order_by(Order.id.desc()).all()
+    
+    # 2. Interactions (Payment, Price, Schedule)
+    # Filter by specific tags we added in batch_processor
+    interactions = db.query(Interaction).filter(Interaction.log_date >= cutoff).order_by(Interaction.id.desc()).all()
+    
+    activity = {
+        "orders": [],
+        "payments": [],
+        "prices": [],
+        "others": []
+    }
+    
+    # Process Orders
+    for o in orders:
+        activity['orders'].append({
+            "sender": o.customer.company_name,
+            "sales_rep": o.customer.sales_rep, # Added Sales Rep
+            "date": o.order_date,
+            "product": o.product_name or '상품미지정', # Explicit product name
+            "text": f"{o.product_name or '상품미지정'} {o.quantity}개",
+            "value": o.quantity,
+            "raw": o.note
+        })
+        
+    # Process Interactions
+    for i in interactions:
+        txt = i.content
+        item = {
+            "sender": i.customer.company_name,
+            "date": i.log_date,
+            "text": txt,
+            "value": 0,
+            "id": i.id  # Added ID for context lookup
+        }
+        
+        if "[입금확인]" in txt:
+            activity['payments'].append(item)
+        elif "[단가변동]" in txt:
+            activity['prices'].append(item)
+        elif "[납기확인]" in txt:
+            activity['prices'].append(item) # Group schedule with price/notices
+        elif "[문의]" in txt:
+             activity['others'].append(item)
+             
+    return activity
+
+def get_interaction_context(db: Session, interaction_id: int, window=5, limit_to_sender=None):
+    """
+    Finds surrounding messages. Increased window size for better detection.
+    Prioritizes backward search for amounts.
+    If limit_to_sender is provided, only includes messages from that sender (company_name).
+    """
+    # Search window [id-window, id+1]
+    min_id = max(1, interaction_id - window)
+    max_id = interaction_id + 1 
+    
+    query = db.query(Interaction).filter(
+        Interaction.id >= min_id, 
+        Interaction.id <= max_id
+    )
+    
+    if limit_to_sender:
+        query = query.join(Interaction.customer).filter(Customer.company_name == limit_to_sender)
+        
+    neighbors = query.order_by(Interaction.id).all()
+    
+    # Format: [content] || ...
+    context_text = " || ".join([f"[{n.id}] {n.content}" for n in neighbors])
+    return context_text
+    
+    # Format: [Date Time] Content
+    context_text = " || ".join([f"[{n.id}] {n.content}" for n in neighbors])
+    return context_text
+
+
 def reset_database(db: Session):
     """Delete all data from all tables"""
     try:

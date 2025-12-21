@@ -1,5 +1,6 @@
 streamlit
-sqlalchemy
 pandas
-openpyxl
-psycopg2-binary
+sqlalchemy
+watchdog
+matplotlib
+pyarrow
