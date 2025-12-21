@@ -591,6 +591,8 @@ elif page == "견적 관리":
                             i_name_sel = st.selectbox("품목 선택", prod_names)
                             i_name = i_name_sel
                         
+                        sel_prod = next((p for p in products if p.name == i_name_sel), None)
+                        
                         # Options Logic
                         import json
                         options_data = None 
