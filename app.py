@@ -852,7 +852,7 @@ elif page == "견적 관리":
                 
                 final_p_price = 0
                 p_desc_auto = ""
-                            if sourcing_type == "국내":
+                if sourcing_type == "국내":
                     # Domestic Logic: Standard Price + Option Groups
                     p_price = st.number_input("기본 단가 (KRW)", min_value=0, step=100)
                     final_p_price = p_price
