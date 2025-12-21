@@ -531,8 +531,8 @@ def create_product(db: Session, name, price, category, desc="", options=None):
     db.commit()
     return new_prod
 
-def delete_product(db: Session, name):
-    prod = db.query(Product).filter(Product.name == name).first()
+def delete_product(db: Session, product_id: int):
+    prod = db.query(Product).filter(Product.id == product_id).first()
     if prod:
         db.delete(prod)
         db.commit()

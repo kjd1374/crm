@@ -951,11 +951,8 @@ elif page == "견적 관리":
                 st.write("---")
                 if st.button("제품 등록 완료", type="primary", use_container_width=True):
                     if p_name:
-                        import json
-                        opts_json = json.dumps(st.session_state.new_prod_opts, ensure_ascii=False)
-                        
-                        utils.add_product(db, p_name, p_cat, final_p_price, p_desc_auto, options_json=opts_json)
-                        st.success(f"'{p_name}' 등록 완료!")
+                        utils.create_product(db, p_name, final_p_price, p_cat, p_desc_auto, options=st.session_state.new_prod_opts)
+                        st.success(f"{p_name} 등록 완료!")
                         st.session_state.new_prod_opts = [] # Reset
                         st.rerun()
                     else:
