@@ -36,12 +36,10 @@ def update_interaction_status(db: Session, interaction_id: int, new_status: str)
 
 # --- MESSENGER RULES ---
 MESSENGER_RULES = [
-    # 1. 🚨 발주 (Order)
-    {"type": "ORDER", "keywords": ["발주", "주문"], "label": "🚨 발주"},
-    # 2. 💰 입금 (Payment)
-    {"type": "PAYMENT", "keywords": ["입금", "송금", "완납", "보냈습니다", "이체"], "label": "💰 입금"},
-    # 3. 📈 단가/가격 (Price)
-    {"type": "PRICE", "keywords": ["단가", "가격", "인상", "인하", "원가", "견적"], "label": "📈 단가"},
+    # 1. 🚨 발주 (Order) - Strict
+    {"type": "ORDER", "keywords": ["발주서", "발주서입니다", "주문서"], "label": "🚨 발주"},
+    # 2. 💰 입금 (Payment) - Strict
+    {"type": "PAYMENT", "keywords": ["입금액", "입금액입니다", "카드결제", "송금", "이체"], "label": "💰 입금"},
 ]
 
 def parse_messenger_logs(text):
@@ -91,66 +89,51 @@ def parse_messenger_logs(text):
         txt = msg["text"].strip()
         msg["text"] = txt
         
-        # Categorize
-        msg_type = "ETC"
+        # Categorize (Strict)
+        msg_type = None
         for rule in MESSENGER_RULES:
             if any(k in txt for k in rule["keywords"]):
                 msg_type = rule["type"]
                 break
+        
+        # ⚠️ Strict Filter for Manual Mode: Skip if no rule matched
+        if not msg_type:
+            continue
         
         msg["type"] = msg_type
         # Add label
         msg["type_label"] = next((r["label"] for r in MESSENGER_RULES if r["type"] == msg_type), "기타")
         
         # Logic for Values (Quantity or Amount)
-        # Regex to find numbers (e.g., 100개, 100,000원, 30만원)
         import re
         
-        # 1. 🚨 Order: Find simple quantities (100개, 100box, etc)
+        # 1. 🚨 Order
         if msg_type == "ORDER":
-            # Finding digits
-            nums = re.findall(r'(\d+)\s*(?:개|박스|box|ea)?', txt, re.IGNORECASE)
-            # Filter out timestamps/dates if possible? For now simple logic.
-            # Usually the number adjacent to the keyword or product is key.
-            # Heuristic: largest integer < 10000 (likely qty) or explicit '개'
-            
-            # Better regex for explicitly quantity
+            msg["value"] = 1 # Default qty 1 if not specified
+            # Try to find quantity if explicitly mentioned like "100개"
             qty_match = re.search(r'(\d+)\s*(?:개|박스|box|ea)', txt, re.IGNORECASE)
             if qty_match:
                 msg["value"] = int(qty_match.group(1))
-            else:
-                 # Fallback: Just grab first digit
-                 nums = re.findall(r'\d+', txt)
-                 msg["value"] = int(nums[0]) if nums else 1
 
-        # 2. 💰 Payment / 📈 Price: Find Currency
-        elif msg_type == "PAYMENT" or msg_type == "PRICE":
-            # Try to find Won (10000원, 10,000, 30만원)
-            # "만원" unit
-            match_man = re.search(r'(\d+)\s*만\s*원?', txt)
-            if match_man:
-                msg["value"] = int(match_man.group(1)) * 10000
-            else:
-                # Standard digits with optional comma
-                # Exclude dates (2024-...)
-                clean_txt = re.sub(r'\d{4}-\d{2}-\d{2}', '', txt)
-                
-                # Look for numbers ending with '원' or simple large numbers (>1000)
-                match_won = re.search(r'([\d,]+)\s*원', clean_txt)
-                if match_won:
-                    val_str = match_won.group(1).replace(',', '')
-                    if val_str:
-                        msg["value"] = int(val_str)
-                else:
-                    # Just find largest number in text?
-                    all_nums = re.findall(r'[\d,]+', clean_txt)
-                    candidates = []
-                    for n in all_nums:
-                        try:
-                            candidates.append(int(n.replace(',', '')))
-                        except: pass
-                    if candidates:
-                        msg["value"] = max(candidates) # Assume largest number is the amount
+        # 2. 💰 Payment
+        elif msg_type == "PAYMENT":
+            msg["value"] = 0
+            # Remove date-like strings to avoid confusion (2024-...)
+            clean_txt = re.sub(r'\d{4}-\d{2}-\d{2}', '', txt)
+            clean_txt = clean_txt.replace(',', '')
+            
+            # Simple approach: Find largest number in the message
+            all_nums = re.findall(r'\d+', clean_txt)
+            candidates = []
+            for n in all_nums:
+                try:
+                    val = int(n)
+                    if val > 1000: # Ignore small numbers like time or small qtys
+                        candidates.append(val)
+                except: pass
+            
+            if candidates:
+                msg["value"] = max(candidates)
         
         results.append(msg)
         
