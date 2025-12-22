@@ -1093,12 +1093,18 @@ elif page == "메신저 입력":
     st.info("💡 **월별 발주 캘린더**는 이제 **[대시보드]** 메뉴에서 바로 확인하실 수 있습니다.")
 
     # 1. Manual Input Area (Optional)
-    with st.expander("📝 (옵션) 수동으로 대화 내용 추가하기", expanded=True):
-        raw_text = st.text_area("", height=150, placeholder="수동으로 추가할 내용이 있다면 여기에 붙여넣으세요.")
+    # 1. Manual Input Area (Optional)
+    with st.expander("📂 대화 내용 파일 업로드 (TXT)", expanded=True):
+        uploaded_file = st.file_uploader("채팅 로그 파일(.txt)을 업로드하세요", type=["txt"])
         col_act1, col_act2 = st.columns([1, 4])
-        analyze_btn = col_act1.button("1. 분석 미리보기")
+        analyze_btn = col_act1.button("1. 파일 분석 및 미리보기")
         
-        if analyze_btn and raw_text:
+        if analyze_btn and uploaded_file is not None:
+             # Read file
+             import io
+             stringio = io.StringIO(uploaded_file.getvalue().decode("utf-8"))
+             raw_text = stringio.read()
+             
              parsed = utils.parse_messenger_logs(raw_text)
              if parsed:
                  st.session_state['manual_parsed_data'] = parsed
@@ -1106,6 +1112,8 @@ elif page == "메신저 입력":
                  st.rerun()
              else:
                  st.warning("분석된 내용이 없습니다. 형식을 확인해주세요.")
+        elif analyze_btn and uploaded_file is None:
+            st.warning("파일을 먼저 업로드해주세요.")
 
         # --- Interactive Parsing & Saving Flow ---
         if st.session_state.get('manual_parsed_step') == 1 and st.session_state.get('manual_parsed_data'):
