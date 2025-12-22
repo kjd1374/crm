@@ -1095,56 +1095,125 @@ elif page == "메신저 입력":
     # 1. Manual Input Area (Optional)
     with st.expander("📝 (옵션) 수동으로 대화 내용 추가하기", expanded=True):
         raw_text = st.text_area("", height=150, placeholder="수동으로 추가할 내용이 있다면 여기에 붙여넣으세요.")
-        if raw_text and st.button("수동 분석 및 저장"):
-            manual_parsed = utils.parse_messenger_logs(raw_text)
-            if manual_parsed:
-                # Save immediately for simplicity
-                # Save to DB
-                db = get_session()
-                count_saved = 0
-                for msg in manual_parsed:
-                    # 1. Identify Customer
-                    sender = msg['sender']
-                    customer = db.query(Customer).filter(
-                        (Customer.client_name == sender) | (Customer.company_name == sender)
-                    ).first()
+        col_act1, col_act2 = st.columns([1, 4])
+        analyze_btn = col_act1.button("1. 분석 미리보기")
+        
+        if analyze_btn and raw_text:
+             parsed = utils.parse_messenger_logs(raw_text)
+             if parsed:
+                 st.session_state['manual_parsed_data'] = parsed
+                 st.session_state['manual_parsed_step'] = 1
+                 st.rerun()
+             else:
+                 st.warning("분석된 내용이 없습니다. 형식을 확인해주세요.")
+
+        # --- Interactive Parsing & Saving Flow ---
+        if st.session_state.get('manual_parsed_step') == 1 and st.session_state.get('manual_parsed_data'):
+            parsed_data = st.session_state['manual_parsed_data']
+            st.divider()
+            st.markdown("#### 🔍 분석 결과 미리보기 및 고객 매칭")
+            
+            # 1. Identify Unique Senders
+            unique_senders = list(set(m['sender'] for m in parsed_data))
+            sender_mapping = {} # {'SenderName': CustomerID or None}
+            
+            db = get_session()
+            all_customers = utils.get_all_customers(db)
+            
+            # Prepare options for selectbox
+            cust_options = {f"{c.company_name} ({c.client_name})": c.id for c in all_customers}
+            inv_cust_options = {v: k for k, v in cust_options.items()} # ID -> Label
+            
+            st.info("⚠️ '보낸사람'이 등록된 고객명과 다를 경우, 아래에서 직접 연결해주세요. (연결하지 않으면 저장되지 않습니다.)")
+            
+            cols_map = st.columns(3)
+            for idx, sender in enumerate(unique_senders):
+                with cols_map[idx % 3]:
+                    # Try Auto Match
+                    match = next((c for c in all_customers if c.client_name == sender or c.company_name == sender), None)
+                    default_idx = 0
+                    if match:
+                        default_label = f"{match.company_name} ({match.client_name})"
+                        if default_label in cust_options:
+                           # Find index in keys list (prepend 'Skip' logic)
+                           pass # handled below
                     
-                    if not customer:
-                        st.warning(f"'{sender}' 고객을 찾을 수 없어 건너뜁니다.")
+                    # UI Select
+                    options_list = ["(건너뛰기/저장안함)"] + list(cust_options.keys())
+                    
+                    # Determine default index
+                    sel_idx = 0
+                    if match:
+                         target = f"{match.company_name} ({match.client_name})"
+                         if target in options_list:
+                             sel_idx = options_list.index(target)
+                    
+                    selection = st.selectbox(f"보낸사람: **{sender}**", options_list, index=sel_idx, key=f"map_{sender}_{idx}")
+                    
+                    if selection != "(건너뛰기/저장안함)":
+                        sender_mapping[sender] = cust_options[selection]
+            
+            # 2. Preview Data to be Saved
+            st.write("▼ 저장될 데이터 미리보기")
+            preview_rows = []
+            for msg in parsed_data:
+                cid = sender_mapping.get(msg['sender'])
+                c_name = inv_cust_options.get(cid, "❌ 매칭안됨(저장X)") if cid else "❌ 매칭안됨(저장X)"
+                preview_rows.append({
+                    "날짜": msg['date'].strftime("%Y-%m-%d %H:%M"),
+                    "보낸사람(원본)": msg['sender'],
+                    "매칭된 고객": c_name,
+                    "유형": msg['type_label'],
+                    "내용": msg['text'],
+                    "값(금액/수량)": msg['value']
+                })
+            st.dataframe(pd.DataFrame(preview_rows))
+            
+            if st.button("2. 확정 및 저장하기", type="primary"):
+                saved_count = 0
+                for msg in parsed_data:
+                    cid = sender_mapping.get(msg['sender'])
+                    if not cid:
                         continue
                         
-                    # 2. Key Actions based on Type
-                    if msg['type'] == "ORDER":
-                        utils.create_order(
-                            db,
-                            customer.id,
-                            msg['date'].date(),
-                            "수동입력 발주",
-                            msg['value'],
-                            0, 0,
-                            f"수동입력: {msg['text']}"
-                        )
-                        count_saved += 1
-                        
-                    elif msg['type'] in ["PAYMENT", "PRICE", "ETC"]:
-                        # Log as Interaction
-                        utils.add_interaction(
-                            db,
-                            customer.id,
-                            f"[{msg['type_label']}] {msg['text']}",
-                            None,
-                            "완료",
-                            log_date=msg['date'].date()
-                        )
-                        count_saved += 1
+                    # Save logic
+                    try:
+                        if msg['type'] == "ORDER":
+                            utils.create_order(
+                                db,
+                                cid,
+                                msg['date'].date(),
+                                "수동입력 발주",
+                                msg['value'],
+                                0, 0,
+                                f"수동입력: {msg['text']}"
+                            )
+                            saved_count += 1
+                        else:
+                            # Payment, Price, Etc -> Interaction
+                            status = "완료"
+                            utils.add_interaction(
+                                db,
+                                cid,
+                                f"[{msg['type_label']}] {msg['text']}",
+                                None,
+                                status,
+                                log_date=msg['date'].date()
+                            )
+                            saved_count += 1
+                    except Exception as e:
+                        st.error(f"저장 중 에러: {e}")
                 
                 db.commit()
                 db.close()
+                st.success(f"총 {saved_count}건이 저장되었습니다!")
                 
-                if count_saved > 0:
-                    st.success(f"{count_saved}건이 저장되었습니다.")
-                else:
-                    st.warning("저장된 내용이 없습니다. (고객 매칭 실패 등)")
+                # Reset state
+                st.session_state['manual_parsed_data'] = None
+                st.session_state['manual_parsed_step'] = 0
+                st.rerun()
+
+            db.close()
     
     st.divider()
     
