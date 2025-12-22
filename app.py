@@ -77,10 +77,9 @@ if page == "대시보드":
     activity = utils.get_recent_messenger_activity(db, days=60)
     
     # --- GLOBAL FILTER (User Request) ---
-    # 1. Orders: Exclude Quotes ([견적서 접수])
-    activity['orders'] = [o for o in activity['orders'] if "[견적서 접수]" not in o['text']]
-    # 2. Payments: Only from "권병구"
-    activity['payments'] = [p for p in activity['payments'] if p['sender'] == "권병구"]
+    # We rely on save-time filtering now. 
+    # Showing all saved Orders and Payments.
+    pass
 
     # Layout: Split View (Narrow Calendar, Wide Details)
     cal_col, detail_col = st.columns([1, 2], gap="large")
