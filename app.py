@@ -1202,15 +1202,22 @@ elif page == "메신저 입력":
                             status = "완료"
                             # Fix: Use tags that get_recent_messenger_activity expects
                             tag = f"[{msg['type_label']}]"
+                            content_prefix = ""
+                            
                             if msg['type'] == 'PAYMENT':
                                 tag = "[입금확인]"
+                                # ⚠️ CRITICAL: Embed detected value into text because Interaction table has no amount field
+                                # and strict filtering discards the context message containing the number.
+                                if msg.get('value', 0) > 0:
+                                    content_prefix = f"({msg['value']:,}원) "
+                                    
                             elif msg['type'] == 'PRICE':
                                 tag = "[단가변동]"
                                 
                             utils.add_interaction(
                                 db,
                                 cid,
-                                f"{tag} {msg['text']}",
+                                f"{tag} {content_prefix}{msg['text']}",
                                 None,
                                 status,
                                 log_date=msg['date'].date()
