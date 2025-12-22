@@ -37,9 +37,9 @@ def update_interaction_status(db: Session, interaction_id: int, new_status: str)
 # --- MESSENGER RULES ---
 MESSENGER_RULES = [
     # 1. 🚨 발주 (Order) - Strict
-    {"type": "ORDER", "keywords": ["발주서", "발주서입니다", "주문서"], "label": "🚨 발주"},
-    # 2. 💰 입금 (Payment) - Strict
-    {"type": "PAYMENT", "keywords": ["입금액", "입금액입니다", "카드결제", "송금", "이체"], "label": "💰 입금"},
+    {"type": "ORDER", "keywords": ["발주서입니다"], "label": "🚨 발주"},
+    # 2. 💰 입금 (Payment) - Strict (Sender must be 권병구)
+    {"type": "PAYMENT", "keywords": ["입금액", "입금액입니다", "카드결제"], "label": "💰 입금"},
 ]
 
 def parse_messenger_logs(text):
@@ -99,6 +99,10 @@ def parse_messenger_logs(text):
         # ⚠️ Strict Filter for Manual Mode: Skip if no rule matched
         if not msg_type:
             continue
+            
+        # ⚠️ Special Rule for Payment: Only allow sender '권병구'
+        if msg_type == "PAYMENT" and msg["sender"] != "권병구":
+            continue
         
         msg["type"] = msg_type
         # Add label
@@ -109,7 +113,7 @@ def parse_messenger_logs(text):
         
         # 1. 🚨 Order
         if msg_type == "ORDER":
-            msg["value"] = 1 # Default qty 1 if not specified
+            msg["value"] = 1 # Default qty 1
             # Try to find quantity if explicitly mentioned like "100개"
             qty_match = re.search(r'(\d+)\s*(?:개|박스|box|ea)', txt, re.IGNORECASE)
             if qty_match:
@@ -128,7 +132,8 @@ def parse_messenger_logs(text):
             for n in all_nums:
                 try:
                     val = int(n)
-                    if val > 1000: # Ignore small numbers like time or small qtys
+                    # Heuristic: Amount should be reasonably large (>1000) or it's just noise
+                    if val > 1000: 
                         candidates.append(val)
                 except: pass
             
