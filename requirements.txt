@@ -4,3 +4,4 @@ sqlalchemy
 watchdog
 matplotlib
 pyarrow
+psycopg2-binary
