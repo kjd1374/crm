@@ -1099,10 +1099,52 @@ elif page == "메신저 입력":
             manual_parsed = utils.parse_messenger_logs(raw_text)
             if manual_parsed:
                 # Save immediately for simplicity
+                # Save to DB
                 db = get_session()
-                # Dummy logic
-                pass 
-                st.success("수동 내용이 처리되었습니다.")
+                count_saved = 0
+                for msg in manual_parsed:
+                    # 1. Identify Customer
+                    sender = msg['sender']
+                    customer = db.query(Customer).filter(
+                        (Customer.client_name == sender) | (Customer.company_name == sender)
+                    ).first()
+                    
+                    if not customer:
+                        st.warning(f"'{sender}' 고객을 찾을 수 없어 건너뜁니다.")
+                        continue
+                        
+                    # 2. Key Actions based on Type
+                    if msg['type'] == "ORDER":
+                        utils.create_order(
+                            db,
+                            customer.id,
+                            msg['date'].date(),
+                            "수동입력 발주",
+                            msg['value'],
+                            0, 0,
+                            f"수동입력: {msg['text']}"
+                        )
+                        count_saved += 1
+                        
+                    elif msg['type'] in ["PAYMENT", "PRICE", "ETC"]:
+                        # Log as Interaction
+                        utils.add_interaction(
+                            db,
+                            customer.id,
+                            f"[{msg['type_label']}] {msg['text']}",
+                            None,
+                            "완료",
+                            log_date=msg['date'].date()
+                        )
+                        count_saved += 1
+                
+                db.commit()
+                db.close()
+                
+                if count_saved > 0:
+                    st.success(f"{count_saved}건이 저장되었습니다.")
+                else:
+                    st.warning("저장된 내용이 없습니다. (고객 매칭 실패 등)")
     
     st.divider()
     

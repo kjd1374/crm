@@ -97,47 +97,6 @@ class MessengerHandler(FileSystemEventHandler):
         if current_msg["sender"]:
             self.trigger_crm_action(current_msg)
 
-# --- CONFIGURATION & RULES ---
-# 여기에 규칙을 정의합니다. (규칙 추가/수정이 쉽도록 분리함)
-RULES = [
-    {
-        "type": "ORDER",
-        "keywords": ["발주", "주문"],
-        "description": "상품 주문으로 분류"
-    },
-    {
-        "type": "INQUIRY",
-        "keywords": ["문의", "?", "가능할까요", "언제"],
-        "description": "일반 문의로 분류"
-    },
-    {
-        "type": "COMPLETE",
-        "keywords": ["완료", "감사합니다", "확정"],
-        "description": "상담 완료 처리"
-    }
-]
-
-def analyze_text(text):
-    """
-    텍스트를 분석하여 가장 적합한 규칙을 찾습니다.
-    (앞뒤 문맥을 고려한 로직 확장이 가능한 곳)
-    """
-    text_lower = text.lower() # Case insensitive
-    
-    # 1. Check for Order (Priority 1)
-    if any(k in text for k in RULES[0]['keywords']):
-        return "ORDER"
-        
-    # 2. Check for Complete (Priority 2)
-    if any(k in text for k in RULES[2]['keywords']):
-        return "COMPLETE"
-        
-    # 3. Check for Inquiry (Priority 3)
-    if any(k in text for k in RULES[1]['keywords']):
-        return "INQUIRY"
-        
-    return None
-
     def trigger_crm_action(self, msg):
         sender = msg['sender']
         text = msg['text'].strip()
@@ -204,6 +163,49 @@ def analyze_text(text):
             print(f"Error acting on message: {e}")
         finally:
             db.close()
+
+# --- CONFIGURATION & RULES ---
+# 여기에 규칙을 정의합니다. (규칙 추가/수정이 쉽도록 분리함)
+RULES = [
+    {
+        "type": "ORDER",
+        "keywords": ["발주", "주문"],
+        "description": "상품 주문으로 분류"
+    },
+    {
+        "type": "INQUIRY",
+        "keywords": ["문의", "?", "가능할까요", "언제"],
+        "description": "일반 문의로 분류"
+    },
+    {
+        "type": "COMPLETE",
+        "keywords": ["완료", "감사합니다", "확정"],
+        "description": "상담 완료 처리"
+    }
+]
+
+def analyze_text(text):
+    """
+    텍스트를 분석하여 가장 적합한 규칙을 찾습니다.
+    (앞뒤 문맥을 고려한 로직 확장이 가능한 곳)
+    """
+    text_lower = text.lower() # Case insensitive
+    
+    # 1. Check for Order (Priority 1)
+    if any(k in text for k in RULES[0]['keywords']):
+        return "ORDER"
+        
+    # 2. Check for Complete (Priority 2)
+    if any(k in text for k in RULES[2]['keywords']):
+        return "COMPLETE"
+        
+    # 3. Check for Inquiry (Priority 3)
+    if any(k in text for k in RULES[1]['keywords']):
+        return "INQUIRY"
+        
+    return None
+
+
 
 if __name__ == "__main__":
     # Ensure file exists
