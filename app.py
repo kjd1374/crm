@@ -1200,10 +1200,17 @@ elif page == "메신저 입력":
                         else:
                             # Payment, Price, Etc -> Interaction
                             status = "완료"
+                            # Fix: Use tags that get_recent_messenger_activity expects
+                            tag = f"[{msg['type_label']}]"
+                            if msg['type'] == 'PAYMENT':
+                                tag = "[입금확인]"
+                            elif msg['type'] == 'PRICE':
+                                tag = "[단가변동]"
+                                
                             utils.add_interaction(
                                 db,
                                 cid,
-                                f"[{msg['type_label']}] {msg['text']}",
+                                f"{tag} {msg['text']}",
                                 None,
                                 status,
                                 log_date=msg['date'].date()

@@ -85,7 +85,9 @@ def parse_messenger_logs(text):
         
     # Analyze Types & Values
     results = []
-    for msg in parsed_msgs:
+    
+    # We use index to look back
+    for i, msg in enumerate(parsed_msgs):
         txt = msg["text"].strip()
         msg["text"] = txt
         
@@ -122,26 +124,42 @@ def parse_messenger_logs(text):
         # 2. 💰 Payment
         elif msg_type == "PAYMENT":
             msg["value"] = 0
-            # Remove date-like strings to avoid confusion (2024-...)
-            clean_txt = re.sub(r'\d{4}-\d{2}-\d{2}', '', txt)
-            clean_txt = clean_txt.replace(',', '')
             
-            # Simple approach: Find largest number in the message
-            all_nums = re.findall(r'\d+', clean_txt)
-            candidates = []
-            for n in all_nums:
-                try:
-                    val = int(n)
-                    # Heuristic: Amount should be reasonably large (>1000) or it's just noise
-                    if val > 1000: 
-                        candidates.append(val)
-                except: pass
+            # Helper to find amount in a string
+            def find_amount(s):
+                clean_s = re.sub(r'\d{4}-\d{2}-\d{2}', '', s) # No dates
+                clean_s = clean_s.replace(',', '')
+                all_n = re.findall(r'\d+', clean_s)
+                cands = []
+                for n in all_n:
+                    try:
+                        v = int(n)
+                        if v > 1000: cands.append(v)
+                    except: pass
+                return max(cands) if cands else 0
             
-            if candidates:
-                msg["value"] = max(candidates)
+            # Check current message
+            val = find_amount(txt)
+            
+            # ⚠️ Context Lookback: If 0, check up to 3 previous messages
+            if val == 0:
+                for offset in range(1, 4): # Check i-1, i-2, i-3
+                    if i - offset >= 0:
+                        prev_msg = parsed_msgs[i - offset]
+                        # Only trust if sender is the same? 
+                        # User said: "Amount is in previous message". 
+                        # Usually same sender.
+                        if prev_msg['sender'] == msg['sender']:
+                             prev_val = find_amount(prev_msg['text'])
+                             if prev_val > 0:
+                                 val = prev_val
+                                 # We found it, stop looking back
+                                 break
+            
+            msg["value"] = val
         
         results.append(msg)
-        
+    
     return results
 
 def get_recent_messenger_activity(db: Session, days=7):
