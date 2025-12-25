@@ -1342,122 +1342,124 @@ elif page == "AI CRM":
                 st.session_state['gemini_api_key'] = api_key_input
             st.caption("API Key는 저장되지 않으며, 세션 동안만 유지됩니다.")
 
-    col_input, col_result = st.columns([1, 1], gap="medium")
-    
-    with col_input:
-        st.subheader("📝 입력")
-        user_text = st.text_area("내용을 입력하세요", height=300, 
-            placeholder="예시:\n오늘 김철수 부장님이랑 통화함.\n아이폰15 프로 5개, 케이스 10개 견적 요청하심.\n단가는 아이폰 150만원, 케이스 2만원으로 맞춰드리기로 했고\n다음주 수요일까지 견적서 보내드리기로 함.")
+    # --- Top Section: Input & Customer Info ---
+    with st.container():
+        col_input, col_result = st.columns([1, 1], gap="medium")
         
-        if st.button("🚀 AI 분석 실행", type="primary", use_container_width=True):
-            if not user_text:
-                st.warning("내용을 입력해주세요.")
-            else:
-                st.session_state['ai_processing'] = True
-                
-    with col_result:
-        st.subheader("📊 분석 결과")
-        if st.session_state.get('ai_processing'):
-            # Real AI Processing
-            with st.spinner("Gemini 3-Flash Preview Model이 내용을 분석 중입니다... (Table Ver.)"):
-                try:
-                    # Get Key: Prioritize Secrets
-                    api_key = None
-                    try:
-                        api_key = st.secrets["GEMINI_API_KEY"]
-                    except:
-                        api_key = st.session_state.get('gemini_api_key')
-                    
-                    if not api_key:
-                        st.error("API Key가 설정되지 않았습니다. (.streamlit/secrets.toml 확인 필요)")
-                        st.session_state['ai_processing'] = False
-                    else:
-                        result = utils.analyze_text_with_gemini_v3(api_key, user_text)
-                        
-                        if "error" in result:
-                            st.error(f"AI 분석 실패: {result['error']}")
-                        else:
-                            st.success("✅ 분석 완료!")
-                            st.session_state['ai_result'] = result  # Store result in session state
-                            
-                except Exception as e:
-                    st.error(f"시스템 오류: {e}")
-                
-                # Processing done
-                st.session_state['ai_processing'] = False
-
-        # Display Results (Persistent) - Top Right: Customer Info
-        if 'ai_result' in st.session_state and st.session_state['ai_result']:
-            result = st.session_state['ai_result']
+        with col_input:
+            st.subheader("📝 입력")
+            user_text = st.text_area("내용을 입력하세요", height=300, 
+                placeholder="예시:\n오늘 김철수 부장님이랑 통화함.\n아이폰15 프로 5개, 케이스 10개 견적 요청하심.\n단가는 아이폰 150만원, 케이스 2만원으로 맞춰드리기로 했고\n다음주 수요일까지 견적서 보내드리기로 함.")
             
-            if "results" in result and result["results"]:
-                import pandas as pd
-                # We need to recreate df here or just use result dict
-                first_row = result["results"][0] if result["results"] else {}
-
-                # 1. Common Information (Customer)
-                st.markdown("##### 🏢 고객 정보 (공통)")
-                st.caption("고객 정보는 상단에서 한 번만 확인하세요.")
-                
-                c0_1, c0_2 = st.columns([1, 2])
-                with c0_1:
-                    # Auto-fill current date/time
-                    current_time_str = datetime.now().strftime("%Y-%m-%d %H:%M")
-                    st.text_input("📅 문의일시 (자동생성)", value=current_time_str)
-                with c0_2:
-                    st.text_input("고객사", value=first_row.get("company_name", ""))
-                
-                c1, c2, c3 = st.columns(3)
-                with c1:
-                    st.text_input("업종", value=first_row.get("industry", ""))
-                with c2:
-                    st.text_input("담당자", value=first_row.get("manager", ""))
-                with c3:
-                    st.text_input("연락처", value=first_row.get("phone", ""))
+            if st.button("🚀 AI 분석 실행", type="primary", use_container_width=True):
+                if not user_text:
+                    st.warning("내용을 입력해주세요.")
+                else:
+                    st.session_state['ai_processing'] = True
                     
-                c4, c5 = st.columns(2)
-                with c4:
-                    st.text_input("이메일", value=first_row.get("email", ""))
-                with c5:
-                     pass # Spacer
+        with col_result:
+            st.subheader("📊 분석 결과")
+            if st.session_state.get('ai_processing'):
+                # Real AI Processing
+                with st.spinner("Gemini 3-Flash Preview Model이 내용을 분석 중입니다... (Table Ver.)"):
+                    try:
+                        # Get Key: Prioritize Secrets
+                        api_key = None
+                        try:
+                            api_key = st.secrets["GEMINI_API_KEY"]
+                        except:
+                            api_key = st.session_state.get('gemini_api_key')
+                        
+                        if not api_key:
+                            st.error("API Key가 설정되지 않았습니다. (.streamlit/secrets.toml 확인 필요)")
+                            st.session_state['ai_processing'] = False
+                        else:
+                            result = utils.analyze_text_with_gemini_v3(api_key, user_text)
+                            
+                            if "error" in result:
+                                st.error(f"AI 분석 실패: {result['error']}")
+                            else:
+                                st.success("✅ 분석 완료!")
+                                st.session_state['ai_result'] = result  # Store result in session state
+                                
+                    except Exception as e:
+                        st.error(f"시스템 오류: {e}")
+                    
+                    # Processing done
+                    st.session_state['ai_processing'] = False
+
+            # Display Results (Persistent) - Top Right: Customer Info
+            if 'ai_result' in st.session_state and st.session_state['ai_result']:
+                result = st.session_state['ai_result']
+                
+                if "results" in result and result["results"]:
+                    import pandas as pd
+                    # We need to recreate df here or just use result dict
+                    first_row = result["results"][0] if result["results"] else {}
+
+                    # 1. Common Information (Customer)
+                    st.markdown("##### 🏢 고객 정보 (공통)")
+                    st.caption("고객 정보는 상단에서 한 번만 확인하세요.")
+                    
+                    c0_1, c0_2 = st.columns([1, 2])
+                    with c0_1:
+                        # Auto-fill current date/time
+                        current_time_str = datetime.now().strftime("%Y-%m-%d %H:%M")
+                        st.text_input("📅 문의일시 (자동생성)", value=current_time_str)
+                    with c0_2:
+                        st.text_input("고객사", value=first_row.get("company_name", ""))
+                    
+                    c1, c2, c3 = st.columns(3)
+                    with c1:
+                        st.text_input("업종", value=first_row.get("industry", ""))
+                    with c2:
+                        st.text_input("담당자", value=first_row.get("manager", ""))
+                    with c3:
+                        st.text_input("연락처", value=first_row.get("phone", ""))
+                        
+                    c4, c5 = st.columns(2)
+                    with c4:
+                        st.text_input("이메일", value=first_row.get("email", ""))
+                    with c5:
+                         pass # Spacer
 
     # --- Bottom Section: Product List (Full Width) ---
-    st.divider() # Visual separation from columns
-    
-    if 'ai_result' in st.session_state and st.session_state['ai_result']:
-        result = st.session_state['ai_result']
-        if "results" in result and result["results"]:
-            st.markdown("##### 📦 제품 목록 (상세)")
-            st.caption("아래 표에서 제품 정보를 자세히 확인하고 수정할 수 있습니다.")
+    with st.container():
+        if 'ai_result' in st.session_state and st.session_state['ai_result']:
+            result = st.session_state['ai_result']
+            if "results" in result and result["results"]:
+                st.divider() # Visual separation
+                st.markdown("##### 📦 제품 목록 (상세)")
+                st.caption("아래 표에서 제품 정보를 자세히 확인하고 수정할 수 있습니다.")
 
-            import pandas as pd
-            df = pd.DataFrame(result["results"])
-            
-            # Filter product-related columns
-            product_cols_map = {
-                "product": "제품",
-                "quantity": "수량",
-                "due_date": "납기일",
-                "note": "비고"
-            }
-            
-            # Ensure columns exist in df before renaming
-            existing_product_keys = [k for k in product_cols_map.keys() if k in df.columns]
-            df_products = df[existing_product_keys].copy()
-            df_products = df_products.rename(columns=product_cols_map)
-            
-            # Define column configuration for better UX
-            column_config = {
-                "수량": st.column_config.NumberColumn("수량", min_value=1, step=1),
-                "제품": st.column_config.TextColumn("제품", width="large"),
-                "비고": st.column_config.TextColumn("비고", width="large"),
-            }
-            
-            edited_df = st.data_editor(
-                df_products, 
-                use_container_width=True, 
-                num_rows="dynamic",
-                column_config=column_config
-            )
-        else:
-            st.warning("분석된 데이터가 없습니다.")
+                import pandas as pd
+                df = pd.DataFrame(result["results"])
+                
+                # Filter product-related columns
+                product_cols_map = {
+                    "product": "제품",
+                    "quantity": "수량",
+                    "due_date": "납기일",
+                    "note": "비고"
+                }
+                
+                # Ensure columns exist in df before renaming
+                existing_product_keys = [k for k in product_cols_map.keys() if k in df.columns]
+                df_products = df[existing_product_keys].copy()
+                df_products = df_products.rename(columns=product_cols_map)
+                
+                # Define column configuration for better UX
+                column_config = {
+                    "수량": st.column_config.NumberColumn("수량", min_value=1, step=1),
+                    "제품": st.column_config.TextColumn("제품", width="large"),
+                    "비고": st.column_config.TextColumn("비고", width="large"),
+                }
+                
+                edited_df = st.data_editor(
+                    df_products, 
+                    use_container_width=True, 
+                    num_rows="dynamic",
+                    column_config=column_config
+                )
+            else:
+                st.warning("분석된 데이터가 없습니다.")
