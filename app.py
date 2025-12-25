@@ -1395,10 +1395,6 @@ elif page == "AI CRM":
                 import pandas as pd
                 df = pd.DataFrame(result["results"])
                 
-from datetime import date, timedelta, datetime
-
-# ... (rest of imports)
-
                 # 1. Common Information (Customer)
                 st.markdown("##### 🏢 고객 정보 (공통)")
                 st.caption("여러 제품을 주문하더라도 고객 정보는 한 번만 입력/확인하면 됩니다.")
