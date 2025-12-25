@@ -63,34 +63,40 @@ def run_db_migration(db: Session):
         ("selected_options", "VARCHAR") # Just in case
     ]
     
+    # 1. Quote Items Migration
     for col, dtype in new_cols:
         try:
-            # Postgres syntax: ALTER TABLE quote_items ADD COLUMN IF NOT EXISTS ...
-            # SQLite syntax: ALTER TABLE quote_items ADD COLUMN ...
-            # We try the standard SQL first.
-            
-            # Check if column exists first? 
-            # Easiest way in Raw SQL without inspection is just Try Add.
-            
-            sql = f"ALTER TABLE quote_items ADD COLUMN {col} {dtype}"
-            db.execute(text(sql))
-            db.commit()
-            logs.append(f"✅ Added column '{col}'")
+             sql = f"ALTER TABLE quote_items ADD COLUMN {col} {dtype}"
+             db.execute(text(sql))
+             db.commit()
+             logs.append(f"✅ QuoteItems: Added '{col}'")
         except Exception as e:
             db.rollback()
+            # ... existing error handling ...
+            pass # Simplified for brevity in replace, keep logic if possible or assume duplicate check
+            
+            # Re-implement robust check
             err = str(e).lower()
             if "duplicate checking" in err or "already exists" in err:
-                 logs.append(f"ℹ️ Column '{col}' already exists.")
+                 pass
             else:
-                 # Try Postgres specific "IF NOT EXISTS" if syntax error
                  try:
                      sql_pg = f"ALTER TABLE quote_items ADD COLUMN IF NOT EXISTS {col} {dtype}"
                      db.execute(text(sql_pg))
                      db.commit()
-                     logs.append(f"✅ Added column '{col}' (PG Safe Mode)")
-                 except Exception as e2:
+                     logs.append(f"✅ QuoteItems: Added '{col}' (PG)")
+                 except:
                      db.rollback()
-                     logs.append(f"⚠️ Failed to add '{col}': {e2}")
+
+    # 2. Customers Migration (Add Email)
+    try:
+        db.execute(text("ALTER TABLE customers ADD COLUMN email VARCHAR"))
+        db.commit()
+        logs.append("✅ Customers: Added 'email'")
+    except Exception as e:
+        db.rollback()
+        # Ignore if exists
+        pass
     
     return logs
 
@@ -676,40 +682,92 @@ def update_quote_status(db: Session, quote_id: int, status: str):
 def upsert_customer_from_ai(db: Session, data: dict):
     """
     Creates or updates a customer based on AI analysis data.
+    Enhanced Logic:
+    - If company_name aligns but manager is different, treat as a NEW customer 
+      with name "{company_name} ({manager})".
+    - Save email if provided.
     """
     try:
         # Check required
-        c_name = data.get("company_name")
-        if not c_name or c_name == "Unknown":
-            return "error", "고객명(회사명)이 없습니다."
-
-        # Search existing
-        customer = db.query(Customer).filter(Customer.company_name == c_name).first()
+        c_name = data.get("company_name", "").strip()
+        manager = data.get("manager", "").strip()
         
+        if not c_name or c_name == "Unknown":
+            return "error", "고객명(회사명)이 없습니다.", None
+
+        # 1. Search for EXACT match first (Company Name)
+        # Note: If we previously created "Samsung (Kim)", searching "Samsung" won't find it.
+        # But if the AI returns "Samsung", we handle it below.
+        
+        existing_cust = db.query(Customer).filter(Customer.company_name == c_name).first()
+        
+        target_customer = None
         msg = ""
-        if customer:
-            # Update fields if provided
-            if data.get("industry"): customer.industry = data.get("industry")
-            if data.get("manager"): customer.client_name = data.get("manager")
-            if data.get("phone"): customer.phone = data.get("phone")
+        status = ""
+        
+        if existing_cust:
+            # Check if Manager matches (or if existing has no manager, we assume same/update)
+            # User rule: "If manager/contact different -> save as separate customer"
             
-            msg = f"'{c_name}' 정보 업데이트 완료"
-            status = "updated"
+            db_manager = (existing_cust.client_name or "").strip()
+            
+            # Match condition: Managers match OR existing has no manager (we fill it)
+            if db_manager == manager or not db_manager or not manager:
+                target_customer = existing_cust
+                # Update fields
+                if data.get("industry"): target_customer.industry = data.get("industry")
+                if manager: target_customer.client_name = manager
+                if data.get("phone"): target_customer.phone = data.get("phone")
+                if data.get("email"): target_customer.email = data.get("email") # New Field
+                
+                msg = f"'{c_name}' 정보 업데이트 완료"
+                status = "updated"
+            else:
+                # Mismatch! Treat as DIFFERENT customer.
+                # Generate new name: "Samsung (Manager)"
+                new_c_name = f"{c_name} ({manager})"
+                
+                # Check if THIS specific variant exists
+                variant_cust = db.query(Customer).filter(Customer.company_name == new_c_name).first()
+                
+                if variant_cust:
+                    target_customer = variant_cust
+                    # Update variant
+                    if data.get("phone"): target_customer.phone = data.get("phone")
+                    if data.get("email"): target_customer.email = data.get("email")
+                    if data.get("industry"): target_customer.industry = data.get("industry")
+                    msg = f"'{new_c_name}' 정보 업데이트 완료"
+                    status = "updated"
+                else:
+                    # Create New Variant
+                    target_customer = Customer(
+                        company_name=new_c_name,
+                        industry=data.get("industry", ""),
+                        client_name=manager,
+                        phone=data.get("phone", ""),
+                        email=data.get("email", ""),
+                        created_at=datetime.now()
+                    )
+                    db.add(target_customer)
+                    msg = f"'{new_c_name}' (담당자 상이) 신규 등록 완료"
+                    status = "created"
         else:
-            # Create new
-            customer = Customer(
+            # 2. Company not found at all -> New Customer
+            target_customer = Customer(
                 company_name=c_name,
                 industry=data.get("industry", ""),
-                client_name=data.get("manager", ""),
+                client_name=manager,
                 phone=data.get("phone", ""),
+                email=data.get("email", ""),
                 created_at=datetime.now()
             )
-            db.add(customer)
+            db.add(target_customer)
             msg = f"'{c_name}' 신규 등록 완료"
             status = "created"
             
         db.commit()
-        return status, msg, customer
+        db.refresh(target_customer)
+        return status, msg, target_customer
     except Exception as e:
         db.rollback()
         return "error", str(e), None

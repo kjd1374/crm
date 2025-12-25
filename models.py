@@ -10,6 +10,7 @@ class Customer(Base):
     company_name = Column(String, unique=True, index=True, nullable=False)
     client_name = Column(String)  # Customer contact person
     phone = Column(String)
+    email = Column(String)        # Added email
     industry = Column(String)
     sales_rep = Column(String)    # Internal sales representative
     created_at = Column(DateTime, default=datetime.now)
