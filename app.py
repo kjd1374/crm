@@ -1402,7 +1402,10 @@ elif page == "AI CRM":
                                 desired_order = ["고객사", "업종", "담당자", "연락처", "이메일", "제품", "수량", "납기일", "비고"]
                                 # Filter only existing columns
                                 existing_cols = [c for c in desired_order if c in df_display.columns]
-                                st.dataframe(df_display[existing_cols], use_container_width=True)
+                                
+                                # Use data_editor for editing
+                                st.caption("💡 표의 내용을 더블클릭하여 직접 수정할 수 있습니다.")
+                                edited_df = st.data_editor(df_display[existing_cols], use_container_width=True, num_rows="dynamic")
                                 
                                 # Action Buttons
                                 st.divider()
@@ -1412,9 +1415,21 @@ elif page == "AI CRM":
                                 if st.button("💾 고객 등록/업데이트", key="btn_upsert_customer"):
                                     with next(utils.get_db()) as db:
                                         success_count = 0
-                                        # Deduplicate customers from the list
+                                        # Deduplicate customers from the *edited* dataframe
                                         unique_customers = {}
-                                        for item in result["results"]:
+                                        
+                                        # Convert DataFrame back to list of dicts for processing
+                                        # We need to map back Korean columns to English keys
+                                        reverse_map = {v: k for k, v in column_map.items()}
+                                        
+                                        for index, row in edited_df.iterrows():
+                                            # Create a dict from the row, mapping back to English keys
+                                            item = {}
+                                            for col_name, val in row.items():
+                                                if col_name in reverse_map:
+                                                    key = reverse_map[col_name]
+                                                    item[key] = val
+                                            
                                             c_name = item.get("company_name")
                                             if c_name and c_name not in unique_customers:
                                                 unique_customers[c_name] = item
@@ -1429,6 +1444,16 @@ elif page == "AI CRM":
                                         
                                         if success_count > 0:
                                             st.success(f"{success_count}건의 고객 정보가 처리되었습니다.")
+                                            
+                                # Debug: Show current customers
+                                with st.expander("👀 현재 등록된 고객 목록 확인"):
+                                    with next(utils.get_db()) as db:
+                                        customers = db.query(models.Customer).order_by(models.Customer.id.desc()).all()
+                                        if customers:
+                                            c_data = [{"ID": c.id, "고객사": c.company_name, "업종": c.industry, "담당자": c.client_name, "연락처": c.phone} for c in customers]
+                                            st.dataframe(c_data)
+                                        else:
+                                            st.info("등록된 고객이 없습니다.")
 
                             else:
                                 st.warning("분석된 데이터가 없습니다.")
