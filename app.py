@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-from datetime import date, timedelta
+from datetime import date, timedelta, datetime
 from database import get_db, init_db
 from models import Customer, Order, Interaction, Quote
 import utils
@@ -1395,6 +1395,10 @@ elif page == "AI CRM":
                 import pandas as pd
                 df = pd.DataFrame(result["results"])
                 
+from datetime import date, timedelta, datetime
+
+# ... (rest of imports)
+
                 # 1. Common Information (Customer)
                 st.markdown("##### 🏢 고객 정보 (공통)")
                 st.caption("여러 제품을 주문하더라도 고객 정보는 한 번만 입력/확인하면 됩니다.")
@@ -1402,19 +1406,27 @@ elif page == "AI CRM":
                 # Get default values from the first result (usually context implies one customer)
                 first_row = result["results"][0] if result["results"] else {}
                 
+                c0_1, c0_2 = st.columns([1, 2])
+                with c0_1:
+                    # Auto-fill current date/time
+                    current_time_str = datetime.now().strftime("%Y-%m-%d %H:%M")
+                    st.text_input("📅 문의일시 (자동생성)", value=current_time_str)
+                with c0_2:
+                    customer_name = st.text_input("고객사", value=first_row.get("company_name", ""))
+                
                 c1, c2, c3 = st.columns(3)
                 with c1:
-                    customer_name = st.text_input("고객사", value=first_row.get("company_name", ""))
-                with c2:
                     industry = st.text_input("업종", value=first_row.get("industry", ""))
-                with c3:
+                with c2:
                     manager = st.text_input("담당자", value=first_row.get("manager", ""))
+                with c3:
+                    phone = st.text_input("연락처", value=first_row.get("phone", ""))
                     
                 c4, c5 = st.columns(2)
                 with c4:
-                    phone = st.text_input("연락처", value=first_row.get("phone", ""))
-                with c5:
                     email = st.text_input("이메일", value=first_row.get("email", ""))
+                with c5:
+                     pass # Spacer
                 
                 st.divider()
                 
