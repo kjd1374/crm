@@ -1386,21 +1386,18 @@ elif page == "AI CRM":
                 # Processing done
                 st.session_state['ai_processing'] = False
 
-        # Display Results (Persistent)
+        # Display Results (Persistent) - Top Right: Customer Info
         if 'ai_result' in st.session_state and st.session_state['ai_result']:
             result = st.session_state['ai_result']
             
-            # Flatten results for DataFrame
             if "results" in result and result["results"]:
                 import pandas as pd
-                df = pd.DataFrame(result["results"])
-                
+                # We need to recreate df here or just use result dict
+                first_row = result["results"][0] if result["results"] else {}
+
                 # 1. Common Information (Customer)
                 st.markdown("##### 🏢 고객 정보 (공통)")
-                st.caption("여러 제품을 주문하더라도 고객 정보는 한 번만 입력/확인하면 됩니다.")
-                
-                # Get default values from the first result (usually context implies one customer)
-                first_row = result["results"][0] if result["results"] else {}
+                st.caption("고객 정보는 상단에서 한 번만 확인하세요.")
                 
                 c0_1, c0_2 = st.columns([1, 2])
                 with c0_1:
@@ -1408,55 +1405,58 @@ elif page == "AI CRM":
                     current_time_str = datetime.now().strftime("%Y-%m-%d %H:%M")
                     st.text_input("📅 문의일시 (자동생성)", value=current_time_str)
                 with c0_2:
-                    customer_name = st.text_input("고객사", value=first_row.get("company_name", ""))
+                    st.text_input("고객사", value=first_row.get("company_name", ""))
                 
                 c1, c2, c3 = st.columns(3)
                 with c1:
-                    industry = st.text_input("업종", value=first_row.get("industry", ""))
+                    st.text_input("업종", value=first_row.get("industry", ""))
                 with c2:
-                    manager = st.text_input("담당자", value=first_row.get("manager", ""))
+                    st.text_input("담당자", value=first_row.get("manager", ""))
                 with c3:
-                    phone = st.text_input("연락처", value=first_row.get("phone", ""))
+                    st.text_input("연락처", value=first_row.get("phone", ""))
                     
                 c4, c5 = st.columns(2)
                 with c4:
-                    email = st.text_input("이메일", value=first_row.get("email", ""))
+                    st.text_input("이메일", value=first_row.get("email", ""))
                 with c5:
                      pass # Spacer
-                
-                st.divider()
-                
-                # 2. Product List
-                st.markdown("##### 📦 제품 목록")
-                
-                # Filter product-related columns
-                product_cols_map = {
-                    "product": "제품",
-                    "quantity": "수량",
-                    "due_date": "납기일",
-                    "note": "비고"
-                }
-                
-                # Create a DataFrame with only product columns
-                # We expect the original 'df' to have these keys from the JSON
-                # If keys are missing in some rows, get() handling might be needed but DataFrame handles NaNs well
-                
-                # Ensure columns exist in df before renaming
-                existing_product_keys = [k for k in product_cols_map.keys() if k in df.columns]
-                df_products = df[existing_product_keys].copy()
-                df_products = df_products.rename(columns=product_cols_map)
-                
-                # Define column configuration for better UX
-                column_config = {
-                    "수량": st.column_config.NumberColumn("수량", min_value=1, step=1),
-                }
-                
-                edited_df = st.data_editor(
-                    df_products, 
-                    use_container_width=True, 
-                    num_rows="dynamic",
-                    column_config=column_config
-                )
-                
-            else:
-                st.warning("분석된 데이터가 없습니다.")
+
+    # --- Bottom Section: Product List (Full Width) ---
+    if 'ai_result' in st.session_state and st.session_state['ai_result']:
+        result = st.session_state['ai_result']
+        if "results" in result and result["results"]:
+            st.divider()
+            st.markdown("##### 📦 제품 목록 (상세)")
+            st.caption("아래 표에서 제품 정보를 자세히 확인하고 수정할 수 있습니다.")
+
+            import pandas as pd
+            df = pd.DataFrame(result["results"])
+            
+            # Filter product-related columns
+            product_cols_map = {
+                "product": "제품",
+                "quantity": "수량",
+                "due_date": "납기일",
+                "note": "비고"
+            }
+            
+            # Ensure columns exist in df before renaming
+            existing_product_keys = [k for k in product_cols_map.keys() if k in df.columns]
+            df_products = df[existing_product_keys].copy()
+            df_products = df_products.rename(columns=product_cols_map)
+            
+            # Define column configuration for better UX
+            column_config = {
+                "수량": st.column_config.NumberColumn("수량", min_value=1, step=1),
+                "제품": st.column_config.TextColumn("제품", width="large"),
+                "비고": st.column_config.TextColumn("비고", width="large"),
+            }
+            
+            edited_df = st.data_editor(
+                df_products, 
+                use_container_width=True, 
+                num_rows="dynamic",
+                column_config=column_config
+            )
+        else:
+            st.warning("분석된 데이터가 없습니다.")
