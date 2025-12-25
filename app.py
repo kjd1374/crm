@@ -1395,28 +1395,60 @@ elif page == "AI CRM":
                 import pandas as pd
                 df = pd.DataFrame(result["results"])
                 
-                # Rename columns for display
-                column_map = {
-                    "company_name": "고객사",
-                    "industry": "업종",
-                    "manager": "담당자",
-                    "phone": "연락처",
-                    "email": "이메일",
+                # 1. Common Information (Customer)
+                st.markdown("##### 🏢 고객 정보 (공통)")
+                st.caption("여러 제품을 주문하더라도 고객 정보는 한 번만 입력/확인하면 됩니다.")
+                
+                # Get default values from the first result (usually context implies one customer)
+                first_row = result["results"][0] if result["results"] else {}
+                
+                c1, c2, c3 = st.columns(3)
+                with c1:
+                    customer_name = st.text_input("고객사", value=first_row.get("company_name", ""))
+                with c2:
+                    industry = st.text_input("업종", value=first_row.get("industry", ""))
+                with c3:
+                    manager = st.text_input("담당자", value=first_row.get("manager", ""))
+                    
+                c4, c5 = st.columns(2)
+                with c4:
+                    phone = st.text_input("연락처", value=first_row.get("phone", ""))
+                with c5:
+                    email = st.text_input("이메일", value=first_row.get("email", ""))
+                
+                st.divider()
+                
+                # 2. Product List
+                st.markdown("##### 📦 제품 목록")
+                
+                # Filter product-related columns
+                product_cols_map = {
                     "product": "제품",
                     "quantity": "수량",
                     "due_date": "납기일",
                     "note": "비고"
                 }
-                df_display = df.rename(columns=column_map)
                 
-                # Reorder columns
-                desired_order = ["고객사", "업종", "담당자", "연락처", "이메일", "제품", "수량", "납기일", "비고"]
-                # Filter only existing columns
-                existing_cols = [c for c in desired_order if c in df_display.columns]
+                # Create a DataFrame with only product columns
+                # We expect the original 'df' to have these keys from the JSON
+                # If keys are missing in some rows, get() handling might be needed but DataFrame handles NaNs well
                 
-                # Use data_editor for editing
-                st.caption("💡 표의 내용을 더블클릭하여 직접 수정할 수 있습니다.")
-                edited_df = st.data_editor(df_display[existing_cols], use_container_width=True, num_rows="dynamic")
+                # Ensure columns exist in df before renaming
+                existing_product_keys = [k for k in product_cols_map.keys() if k in df.columns]
+                df_products = df[existing_product_keys].copy()
+                df_products = df_products.rename(columns=product_cols_map)
+                
+                # Define column configuration for better UX
+                column_config = {
+                    "수량": st.column_config.NumberColumn("수량", min_value=1, step=1),
+                }
+                
+                edited_df = st.data_editor(
+                    df_products, 
+                    use_container_width=True, 
+                    num_rows="dynamic",
+                    column_config=column_config
+                )
                 
             else:
                 st.warning("분석된 데이터가 없습니다.")
