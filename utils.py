@@ -821,6 +821,7 @@ def create_quote_from_ai(db: Session, customer_id: int, products_data: list):
             
         db.commit()
         return "success", f"견적(Quote #{new_quote.id})이 생성되었습니다."
+    except Exception as e:
         db.rollback()
         return "error", str(e)
 
