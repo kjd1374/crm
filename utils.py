@@ -35,6 +35,65 @@ def update_interaction_status(db: Session, interaction_id: int, new_status: str)
     return False
 
 
+from sqlalchemy import text
+
+def run_db_migration(db: Session):
+    """
+    Manually add missing columns to the remote database.
+    This is fail-safe: it attempts to add columns and ignores errors if they exist.
+    """
+    logs = []
+    
+    # Define columns to add to 'quote_items'
+    # Format: (column_name, data_type)
+    # Using Generic SQL types that work on Postgres/SQLite (mostly)
+    # Postgres supports IF NOT EXISTS. SQLite doesn't always.
+    # We will use try-except blocks with simple ADD COLUMN for maximum compatibility if we don't know the engine.
+    # But for Postgres (Streamlit Cloud), we can use IF NOT EXISTS if we are sure.
+    # Let's stick to try-except which covers both.
+    
+    new_cols = [
+        ("print_type", "VARCHAR"),
+        ("origin", "VARCHAR"),
+        ("color", "VARCHAR"),
+        ("cutting", "BOOLEAN DEFAULT FALSE"),
+        ("remote_control", "BOOLEAN DEFAULT FALSE"),
+        ("due_date", "VARCHAR"),
+        ("note", "VARCHAR"),
+        ("selected_options", "VARCHAR") # Just in case
+    ]
+    
+    for col, dtype in new_cols:
+        try:
+            # Postgres syntax: ALTER TABLE quote_items ADD COLUMN IF NOT EXISTS ...
+            # SQLite syntax: ALTER TABLE quote_items ADD COLUMN ...
+            # We try the standard SQL first.
+            
+            # Check if column exists first? 
+            # Easiest way in Raw SQL without inspection is just Try Add.
+            
+            sql = f"ALTER TABLE quote_items ADD COLUMN {col} {dtype}"
+            db.execute(text(sql))
+            db.commit()
+            logs.append(f"✅ Added column '{col}'")
+        except Exception as e:
+            db.rollback()
+            err = str(e).lower()
+            if "duplicate checking" in err or "already exists" in err:
+                 logs.append(f"ℹ️ Column '{col}' already exists.")
+            else:
+                 # Try Postgres specific "IF NOT EXISTS" if syntax error
+                 try:
+                     sql_pg = f"ALTER TABLE quote_items ADD COLUMN IF NOT EXISTS {col} {dtype}"
+                     db.execute(text(sql_pg))
+                     db.commit()
+                     logs.append(f"✅ Added column '{col}' (PG Safe Mode)")
+                 except Exception as e2:
+                     db.rollback()
+                     logs.append(f"⚠️ Failed to add '{col}': {e2}")
+    
+    return logs
+
 # --- MESSENGER RULES ---
 MESSENGER_RULES = [
     # 1. 🚨 발주 (Order) - Strict

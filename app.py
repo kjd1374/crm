@@ -32,6 +32,20 @@ with st.sidebar.expander("⚠️ 데이터 초기화"):
             st.error("초기화 실패")
         db.close()
 
+# Admin Tools (Hidden/Advanced)
+with st.sidebar.expander("🛠️ 관리자 도구"):
+    st.caption("DB 스키마 변경 등")
+    if st.button("DB 마이그레이션 실행"):
+        db = get_session()
+        logs = utils.run_db_migration(db)
+        db.close()
+        for log in logs:
+            st.text(log)
+        if not logs:
+            st.info("변경사항 없음 (이미 최신)")
+        else:
+            st.success("마이그레이션 완료")
+
 # --- PAGE 1: Dashboard ---
 if page == "대시보드":
     st.title("📊 대시보드")
