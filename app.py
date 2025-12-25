@@ -1407,19 +1407,19 @@ elif page == "AI CRM":
                         current_time_str = datetime.now().strftime("%Y-%m-%d %H:%M")
                         st.text_input("📅 문의일시 (자동생성)", value=current_time_str)
                     with c0_2:
-                        st.text_input("고객사", value=first_row.get("company_name", ""))
+                        st.text_input("고객사", value=first_row.get("company_name", ""), key="ai_cust_company")
                     
                     c1, c2, c3 = st.columns(3)
                     with c1:
-                        st.text_input("업종", value=first_row.get("industry", ""))
+                        st.text_input("업종", value=first_row.get("industry", ""), key="ai_cust_industry")
                     with c2:
-                        st.text_input("담당자", value=first_row.get("manager", ""))
+                        st.text_input("담당자", value=first_row.get("manager", ""), key="ai_cust_manager")
                     with c3:
-                        st.text_input("연락처", value=first_row.get("phone", ""))
+                        st.text_input("연락처", value=first_row.get("phone", ""), key="ai_cust_phone")
                         
                     c4, c5 = st.columns(2)
                     with c4:
-                        st.text_input("이메일", value=first_row.get("email", ""))
+                        st.text_input("이메일", value=first_row.get("email", ""), key="ai_cust_email")
                     with c5:
                          pass # Spacer
 
@@ -1485,3 +1485,53 @@ elif page == "AI CRM":
                 )
             else:
                 st.warning("분석된 데이터가 없습니다.")
+
+            # Action Buttons (Restored & Updated)
+            if "results" in result and result["results"]:
+                st.divider()
+                st.markdown("##### 📥 데이터 처리")
+                
+                if st.button("💾 고객 및 견적 등록", key="btn_upsert_all", type="primary", use_container_width=True):
+                    # 1. Gather Customer Data from Inputs (using keys)
+                    c_data = {
+                        "company_name": st.session_state.get("ai_cust_company"),
+                        "industry": st.session_state.get("ai_cust_industry"),
+                        "manager": st.session_state.get("ai_cust_manager"),
+                        "phone": st.session_state.get("ai_cust_phone"),
+                        "email": st.session_state.get("ai_cust_email")
+                    }
+                    
+                    if not c_data["company_name"]:
+                        st.error("고객사명은 필수입니다.")
+                    else:
+                        with next(utils.get_db()) as db:
+                            # 2. Upsert Customer
+                            status, msg, customer = utils.upsert_customer_from_ai(db, c_data)
+                            
+                            if status == "error":
+                                st.error(f"고객 저장 실패: {msg}")
+                            else:
+                                st.toast(f"고객: {msg}", icon="✅")
+                                
+                                # 3. Create Quote with Items
+                                # Map back from Korean to English keys for the utility function
+                                reverse_map = {v: k for k, v in product_cols_map.items()} # product_cols_map is defined above
+                                
+                                products_data = []
+                                for index, row in edited_df.iterrows():
+                                    item = {}
+                                    for col_name, val in row.items():
+                                        # Dataframe columns are Korean (e.g., '제품'), map to 'product'
+                                        if col_name in reverse_map:
+                                            key = reverse_map[col_name]
+                                            item[key] = val
+                                    products_data.append(item)
+                                
+                                if products_data:
+                                    q_status, q_msg = utils.create_quote_from_ai(db, customer.id, products_data)
+                                    if q_status == "success":
+                                        st.success(f"완료! {msg}\n{q_msg}")
+                                    else:
+                                        st.error(f"견적 생성 실패: {q_msg}")
+                                else:
+                                    st.warning("저장할 제품 목록이 없습니다.")

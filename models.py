@@ -79,6 +79,8 @@ class Quote(Base):
     customer = relationship("Customer", back_populates="quotes")
     items = relationship("QuoteItem", back_populates="quote", cascade="all, delete-orphan")
 
+    quote = relationship("Quote", back_populates="items")
+    
 class QuoteItem(Base):
     __tablename__ = "quote_items"
     
@@ -88,6 +90,17 @@ class QuoteItem(Base):
     quantity = Column(Integer, default=1)
     unit_price = Column(Integer, default=0)
     amount = Column(Integer, default=0)
-    selected_options = Column(String) # Text summary of selected options
+    
+    # Detailed Specs from AI/User
+    print_type = Column(String)  # 1도 단면, etc
+    origin = Column(String)      # 국내, 중국
+    color = Column(String)
+    cutting = Column(Boolean, default=False)
+    remote_control = Column(Boolean, default=False)
+    due_date = Column(String)    # Kept as string for flexibility (e.g. "1월 5일")
+    note = Column(String)
+    
+    # Additional options JSON if needed
+    selected_options = Column(String, default="") 
     
     quote = relationship("Quote", back_populates="items")

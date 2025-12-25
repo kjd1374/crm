@@ -650,7 +650,60 @@ def upsert_customer_from_ai(db: Session, data: dict):
             status = "created"
             
         db.commit()
-        return status, msg
+        return status, msg, customer
+    except Exception as e:
+        db.rollback()
+        return "error", str(e), None
+
+def create_quote_from_ai(db: Session, customer_id: int, products_data: list):
+    """
+    Creates a new Quote and QuoteItems from the AI analysis/edited data.
+    products_data: List of dicts with keys matching the column map in app.py (Korean keys or English keys?)
+    We should assume the data passed here is already mapped to English keys for model compatibility, 
+    OR we handle the mapping here.
+    Let's handle English keys here, assuming the caller (app.py) normalizes it.
+    """
+    try:
+        # 1. Create Quote Header
+        new_quote = Quote(
+            customer_id=customer_id,
+            quote_date=date.today(),
+            status="Draft",
+            total_amount=0, # Calculated from items if price exists, else 0
+            note="AI 분석 및 등록됨"
+        )
+        db.add(new_quote)
+        db.commit()
+        db.refresh(new_quote)
+        
+        # 2. Create Items
+        total = 0
+        for item in products_data:
+            # item is a dict with keys: product, quantity, print_type, origin, color, due_date, cutting, remote_control, note
+            qty = int(item.get("quantity", 0))
+            
+            # cutting/remote might be boolean or string depending on dataframe editor
+            cutting_val = item.get("cutting", False)
+            remote_val = item.get("remote_control", False)
+            
+            q_item = QuoteItem(
+                quote_id=new_quote.id,
+                product_name=item.get("product", ""),
+                quantity=qty,
+                unit_price=0, # AI doesn't extract price yet
+                amount=0,
+                print_type=item.get("print_type", ""),
+                origin=item.get("origin", ""),
+                color=item.get("color", ""),
+                cutting=bool(cutting_val),
+                remote_control=bool(remote_val),
+                due_date=str(item.get("due_date", "")),
+                note=item.get("note", "")
+            )
+            db.add(q_item)
+            
+        db.commit()
+        return "success", f"견적(Quote #{new_quote.id})이 생성되었습니다."
     except Exception as e:
         db.rollback()
         return "error", str(e)
