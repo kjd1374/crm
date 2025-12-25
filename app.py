@@ -1303,7 +1303,7 @@ elif page == "AI CRM":
         st.subheader("📊 분석 결과")
         if st.session_state.get('ai_processing'):
             # Real AI Processing
-            with st.spinner("Gemini 3-Flash Preview Model이 내용을 분석 중입니다..."):
+            with st.spinner("Gemini 3-Flash Preview Model이 내용을 분석 중입니다... (Table Ver.)"):
                 try:
                     # Get Key: Check Session, then Secrets, then Fallback (not recommended for git, but requested)
                     api_key = st.session_state.get('gemini_api_key')
