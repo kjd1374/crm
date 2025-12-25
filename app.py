@@ -455,7 +455,16 @@ elif page == "고객 관리":
                     customer.sales_rep = c_rep
                     db.commit()
                     st.success("수정되었습니다!")
+                    st.success("수정되었습니다!")
                     st.rerun()
+            
+            st.divider()
+            if st.button("❌ 고객 삭제", type="primary", key="del_cust_btn"):
+                if utils.delete_customer(db, customer.id):
+                    st.success(f"'{customer.company_name}' 고객이 삭제되었습니다.")
+                    st.rerun()
+                else:
+                    st.error("삭제 실패")
             
             st.info(f"등록일: {customer.created_at.strftime('%Y-%m-%d')}")
 
@@ -1394,7 +1403,11 @@ elif page == "AI CRM":
                             st.error("API Key가 설정되지 않았습니다. (.streamlit/secrets.toml 확인 필요)")
                             st.session_state['ai_processing'] = False
                         else:
-                            result = utils.analyze_text_with_gemini_v3(api_key, user_text)
+                            # Fetch Product List for Smart Matching
+                            all_prods = utils.get_all_products(db)
+                            prod_names = [p.name for p in all_prods]
+                            
+                            result = utils.analyze_text_with_gemini_v3(api_key, user_text, product_names=prod_names)
                             
                             if "error" in result:
                                 st.error(f"AI 분석 실패: {result['error']}")

@@ -821,14 +821,31 @@ def create_quote_from_ai(db: Session, customer_id: int, products_data: list):
             
         db.commit()
         return "success", f"견적(Quote #{new_quote.id})이 생성되었습니다."
-    except Exception as e:
         db.rollback()
         return "error", str(e)
 
 # --- AI Integrations ---
-def analyze_text_with_gemini_v3(api_key: str, text: str):
+def delete_customer(db: Session, customer_id: int):
+    """
+    Deletes a customer and all their related data (quotes, orders, interactions).
+    Returns True if successful, False otherwise.
+    """
+    try:
+        c = db.query(Customer).filter(Customer.id == customer_id).first()
+        if c:
+            db.delete(c)
+            db.commit()
+            return True
+        return False
+    except Exception as e:
+        db.rollback()
+        print(f"Delete Customer Error: {e}")
+        return False
+
+def analyze_text_with_gemini_v3(api_key: str, text: str, product_names: list[str] = None):
     """
     Uses Google Gemini API to parse natural language text into structured JSON.
+    V3 Update: Accepts product_names list for Smart Matching.
     """
     import google.generativeai as genai
     import json
@@ -843,26 +860,30 @@ def analyze_text_with_gemini_v3(api_key: str, text: str):
         # Actually, let's just set it. If it fails, the error will be caught in app.py
         model = genai.GenerativeModel('gemini-3-flash-preview')
     
+    # Format valid items for prompt
+    valid_products_str = ", ".join(product_names) if product_names else "None supplied"
+    
     prompt = f"""
     You are an expert CRM assistant. Analyze the following Korean text and extract data into a structured list of items.
-    The goal is to populate a table with the following specific columns for product order details:
+    The goal is to populate a table with the following specific columns:
     
     1. 고객명 (Company Name)
     2. 업종 (Industry Type e.g. '제조업', 'IT', '유통', '기타')
     3. 담당자 (Manager Name)
     4. 연락처 (Phone Number)
     5. 메일주소 (Email Address)
-    
-    Product Details:
     6. 제품 (Product Name)
+       - Strict Match Rule: Compare extracted product name with this VALID LIST: [{valid_products_str}]
+       - If a match is found (even with slight spelling differences, spaces, or aliases), use the EXACT NAME from the VALID LIST.
+       - If NO match is found, output "없음" (None).
     7. 수량 (Quantity - as integer)
-    8. 인쇄방식 (Print Type) - MUST be one of ["1도 단면", "1도 양면", "UV인쇄", "각인"]. Infer from context if possible, or leave empty.
-    9. 제작 (Origin) - MUST be one of ["국내", "중국"]. Infer from context (e.g., 'Domestic', 'China'), default to empty if unsure.
-    10. 색상 (Color) - Extract color info.
-    11. 납기일 (Due Date)
-    12. 컷팅 (Cutting) - Return "O" if cutting is required/mentioned, "X" if explicitly described as not needed, or leave empty/default to "X".
-    13. 원격조종 (Remote Control) - Return "O" if remote control mentioned, "X" otherwise.
-    14. 비고 (Note) - Other details.
+    8. 인쇄방식 (Print Type - Must be one of ["1도 단면", "1도 양면", "UV인쇄", "각인", "없음"])
+    9. 제작 (Origin - Must be one of ["국내", "중국"])
+    10. 색상 (Color)
+    11. 컷팅 (Cutting - true/false. Keywords: 컷팅O, 컷팅함 -> true)
+    12. 원격조종 (Remote Control - true/false. Keywords: 원격O -> true)
+    13. 납기일 (Due Date - e.g. "1월 5일")
+    14. 비고 (Note - any other details, contexts, or price info)
 
     Text: "{text}"
     
@@ -890,8 +911,7 @@ def analyze_text_with_gemini_v3(api_key: str, text: str):
     
     Instructions:
     - If multiple products are mentioned, create multiple objects in the 'results' list, repeating the customer info.
-    - If a field is not found, leave it as an empty string "" (or 0 for qty).
-    - For 'cutting' and 'remote_control', return boolean true/false in JSON, which I will convert to Checkbox.
+    - If a field is not found, leave it as an empty string "" or 0 for quantity.
     - Return ONLY the JSON object. No markdown.
     """
     
