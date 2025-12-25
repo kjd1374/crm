@@ -1292,16 +1292,39 @@ elif page == "AI CRM":
     if 'gemini_api_key' not in st.session_state:
         st.session_state['gemini_api_key'] = ""
 
-    # Check for secrets
+    # Check for secrets (st.secrets or manual file read as fallback)
     has_secret_key = False
+    secret_api_key = None
+    
+    # 1. Try st.secrets
     try:
-        if st.secrets["GEMINI_API_KEY"]:
+        if "GEMINI_API_KEY" in st.secrets:
+            secret_api_key = st.secrets["GEMINI_API_KEY"]
             has_secret_key = True
     except:
         pass
 
+    # 2. Fallback: Manual read of .streamlit/secrets.toml (if Cloud ignores repo file)
+    if not has_secret_key:
+        try:
+            import toml
+            import os
+            # Try connecting path
+            secret_path = os.path.join(os.path.dirname(__file__), ".streamlit/secrets.toml")
+            if os.path.exists(secret_path):
+                with open(secret_path, "r", encoding="utf-8") as f:
+                    secrets_dict = toml.load(f)
+                    if "GEMINI_API_KEY" in secrets_dict:
+                        secret_api_key = secrets_dict["GEMINI_API_KEY"]
+                        has_secret_key = True
+        except Exception as e:
+            # st.error(f"Debug: File Read Error - {e}")
+            pass
+
     if has_secret_key:
-        st.success("🔑 API Key가 시스템 설정(Secrets)에서 로드되었습니다.")
+        st.success("✅ API Key가 설정파일에서 로드되었습니다!")
+        # Inject into session state for valid use in rest of app
+        st.session_state['gemini_api_key'] = secret_api_key
     else:
         with st.expander("🔑 설정 (API Key)", expanded=True):
             api_key_input = st.text_input("Google Gemini API Key", type="password", key="gemini_api_key_input")
