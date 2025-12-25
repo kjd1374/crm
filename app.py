@@ -1317,19 +1317,15 @@ elif page == "AI CRM":
             # Real AI Processing
             with st.spinner("Gemini 3-Flash Preview Model이 내용을 분석 중입니다... (Table Ver.)"):
                 try:
-                    # Get Key: Check Session, then Secrets, then Fallback (not recommended for git, but requested)
-                    api_key = st.session_state.get('gemini_api_key')
-                    if not api_key:
-                        # Try secrets
-                         try:
-                             api_key = st.secrets["GEMINI_API_KEY"]
-                         except:
-                             # Hardcoded fallback as requested by user for immediate testing
-                             # ⚠️ Ideally this should be removed before public commit if repo is public
-                             api_key = "AIzaSyDfkmKQmxf2t1u3xYDaDYFxom6-6kgrM04"
+                    # Get Key: Prioritize Secrets
+                    api_key = None
+                    try:
+                        api_key = st.secrets["GEMINI_API_KEY"]
+                    except:
+                        api_key = st.session_state.get('gemini_api_key')
                     
                     if not api_key:
-                        st.error("API Key가 설정되지 않았습니다.")
+                        st.error("API Key가 설정되지 않았습니다. (.streamlit/secrets.toml 확인 필요)")
                         st.session_state['ai_processing'] = False
                     else:
                         result = utils.analyze_text_with_gemini_v3(api_key, user_text)
@@ -1340,31 +1336,58 @@ elif page == "AI CRM":
                             st.success("✅ 분석 완료!")
                             
                             # Flatten results for DataFrame
-                            if 'results' in result:
-                                df_res = pd.DataFrame(result['results'])
+                            if "results" in result and result["results"]:
+                                import pandas as pd
+                                df = pd.DataFrame(result["results"])
                                 
                                 # Rename columns for display
-                                col_map = {
-                                    "company_name": "고객명",
+                                column_map = {
+                                    "company_name": "고객사",
+                                    "industry": "업종",
                                     "manager": "담당자",
                                     "phone": "연락처",
-                                    "email": "메일주소",
+                                    "email": "이메일",
                                     "product": "제품",
                                     "quantity": "수량",
                                     "due_date": "납기일",
                                     "note": "비고"
                                 }
-                                df_disp = df_res.rename(columns=col_map)
+                                df_display = df.rename(columns=column_map)
                                 
-                                st.dataframe(df_disp, hide_index=True)
+                                # Reorder columns
+                                desired_order = ["고객사", "업종", "담당자", "연락처", "이메일", "제품", "수량", "납기일", "비고"]
+                                # Filter only existing columns
+                                existing_cols = [c for c in desired_order if c in df_display.columns]
+                                st.dataframe(df_display[existing_cols], use_container_width=True)
+                                
+                                # Action Buttons
+                                st.divider()
+                                st.markdown("##### 📥 데이터 처리")
+                                
+                                # Customer Update Button
+                                if st.button("💾 고객 등록/업데이트", key="btn_upsert_customer"):
+                                    with next(utils.get_db()) as db:
+                                        success_count = 0
+                                        # Deduplicate customers from the list
+                                        unique_customers = {}
+                                        for item in result["results"]:
+                                            c_name = item.get("company_name")
+                                            if c_name and c_name not in unique_customers:
+                                                unique_customers[c_name] = item
+                                        
+                                        for c_name, data in unique_customers.items():
+                                            status, msg = utils.upsert_customer_from_ai(db, data)
+                                            if status == "error":
+                                                st.error(f"오류 ({c_name}): {msg}")
+                                            else:
+                                                st.toast(f"{msg}", icon="✅")
+                                                success_count += 1
+                                        
+                                        if success_count > 0:
+                                            st.success(f"{success_count}건의 고객 정보가 처리되었습니다.")
+
                             else:
-                                st.json(result) # Fallback
-                            
-                            # Option to apply actions?
-                            st.divider()
-                            st.markdown("##### 📥 데이터 처리 (예정)")
-                            c1, c2 = st.columns(2)
-                            c1.button("💾 데이터 저장", disabled=True, help="추후 구현")
+                                st.warning("분석된 데이터가 없습니다.")
                             c2.button("📋 클립보드 복사", disabled=True, help="추후 구현")
                             
                 except Exception as e:

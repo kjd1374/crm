@@ -613,6 +613,47 @@ def update_quote_status(db: Session, quote_id: int, status: str):
         return True
     return False
 
+def upsert_customer_from_ai(db: Session, data: dict):
+    """
+    Creates or updates a customer based on AI analysis data.
+    """
+    try:
+        # Check required
+        c_name = data.get("company_name")
+        if not c_name or c_name == "Unknown":
+            return "error", "고객명(회사명)이 없습니다."
+
+        # Search existing
+        customer = db.query(Customer).filter(Customer.company_name == c_name).first()
+        
+        msg = ""
+        if customer:
+            # Update fields if provided
+            if data.get("industry"): customer.industry = data.get("industry")
+            if data.get("manager"): customer.client_name = data.get("manager")
+            if data.get("phone"): customer.phone = data.get("phone")
+            
+            msg = f"'{c_name}' 정보 업데이트 완료"
+            status = "updated"
+        else:
+            # Create new
+            customer = Customer(
+                company_name=c_name,
+                industry=data.get("industry", ""),
+                client_name=data.get("manager", ""),
+                phone=data.get("phone", ""),
+                created_at=datetime.now()
+            )
+            db.add(customer)
+            msg = f"'{c_name}' 신규 등록 완료"
+            status = "created"
+            
+        db.commit()
+        return status, msg
+    except Exception as e:
+        db.rollback()
+        return "error", str(e)
+
 # --- AI Integrations ---
 def analyze_text_with_gemini_v3(api_key: str, text: str):
     """
@@ -636,13 +677,14 @@ def analyze_text_with_gemini_v3(api_key: str, text: str):
     The goal is to populate a table with the following specific columns:
     
     1. 고객명 (Company Name)
-    2. 담당자 (Manager Name)
-    3. 연락처 (Phone Number)
-    4. 메일주소 (Email Address)
-    5. 제품 (Product Name)
-    6. 수량 (Quantity - as integer)
-    7. 납기일 (Due Date)
-    8. 비고 (Note - any other details, contexts, or price info)
+    2. 업종 (Industry Type e.g. '제조업', 'IT', '유통', '기타')
+    3. 담당자 (Manager Name)
+    4. 연락처 (Phone Number)
+    5. 메일주소 (Email Address)
+    6. 제품 (Product Name)
+    7. 수량 (Quantity - as integer)
+    8. 납기일 (Due Date)
+    9. 비고 (Note - any other details, contexts, or price info)
 
     Text: "{text}"
     
@@ -651,6 +693,7 @@ def analyze_text_with_gemini_v3(api_key: str, text: str):
       "results": [
         {{
           "company_name": "...",
+          "industry": "...",
           "manager": "...",
           "phone": "...",
           "email": "...",
