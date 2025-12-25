@@ -535,7 +535,7 @@ elif page == "고객 관리":
                             st.write(f"**유효기간:** {q.valid_until}")
                             st.write(f"**메모:** {q.note}")
                             # Items
-                            st.table(pd.DataFrame([{"상품": i.product_name, "수량": i.quantity, "단가": i.unit_price, "금액": i.amount} for i in q.items]))
+                            st.table(pd.DataFrame([{"상품": i.product_name, "수량": i.quantity, "단가": i.unit_price, "금액": i.amount} for i in q.quote_items]))
                             
                             c1, c2 = st.columns(2)
                             if q.status == "Draft":
@@ -835,7 +835,7 @@ elif page == "견적 관리":
                 for q in qs:
                     with st.expander(f"[{q.quote_date}] {c.company_name} - ₩{q.total_amount:,} ({q.status})"):
                         # Show Items
-                        st.table(pd.DataFrame([{"상품": i.product_name, "옵션": i.selected_options, "수량": i.quantity, "금액": i.amount} for i in q.items]))
+                        st.table(pd.DataFrame([{"상품": i.product_name, "옵션": i.selected_options, "수량": i.quantity, "금액": i.amount} for i in q.quote_items]))
                         
                         c1, c2, c3 = st.columns([1, 1, 3])
                         if c1.button("🗑 삭제", key=f"del_q_{q.id}"):
@@ -846,7 +846,7 @@ elif page == "견적 관리":
                         if c2.button("✏️ 불러오기(수정)", key=f"edit_q_{q.id}"):
                             # Load items into session state and switch tab
                             st.session_state.quote_items = []
-                            for i in q.items:
+                            for i in q.quote_items:
                                 st.session_state.quote_items.append({
                                     "product_name": i.product_name,
                                     "qty": i.quantity,
