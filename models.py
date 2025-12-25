@@ -79,8 +79,6 @@ class Quote(Base):
     customer = relationship("Customer", back_populates="quotes")
     items = relationship("QuoteItem", back_populates="quote", cascade="all, delete-orphan")
 
-    quote = relationship("Quote", back_populates="items")
-    
 class QuoteItem(Base):
     __tablename__ = "quote_items"
     
