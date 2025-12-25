@@ -1326,14 +1326,34 @@ elif page == "AI CRM":
                             st.error(f"AI 분석 실패: {result['error']}")
                         else:
                             st.success("✅ 분석 완료!")
-                            st.json(result)
+                            
+                            # Flatten results for DataFrame
+                            if 'results' in result:
+                                df_res = pd.DataFrame(result['results'])
+                                
+                                # Rename columns for display
+                                col_map = {
+                                    "company_name": "고객명",
+                                    "manager": "담당자",
+                                    "phone": "연락처",
+                                    "email": "메일주소",
+                                    "product": "제품",
+                                    "quantity": "수량",
+                                    "due_date": "납기일",
+                                    "note": "비고"
+                                }
+                                df_disp = df_res.rename(columns=col_map)
+                                
+                                st.dataframe(df_disp, hide_index=True)
+                            else:
+                                st.json(result) # Fallback
                             
                             # Option to apply actions?
                             st.divider()
                             st.markdown("##### 📥 데이터 처리 (예정)")
                             c1, c2 = st.columns(2)
-                            c1.button("💾 상담일지로 저장", disabled=True, help="기능 구현 예정")
-                            c2.button("📄 견적서 생성", disabled=True, help="기능 구현 예정")
+                            c1.button("💾 데이터 저장", disabled=True, help="추후 구현")
+                            c2.button("📋 클립보드 복사", disabled=True, help="추후 구현")
                             
                 except Exception as e:
                     st.error(f"시스템 오류: {e}")

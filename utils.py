@@ -632,30 +632,40 @@ def analyze_text_with_gemini(api_key: str, text: str):
         model = genai.GenerativeModel('gemini-3-flash-preview')
     
     prompt = f"""
-    You are an expert CRM assistant. Analyze the following Korean text which describes a business consultation, quote request, or order.
-    Extract key information and return it ONLY as a JSON object. Do not include markdown code block markers (like ```json).
+    You are an expert CRM assistant. Analyze the following Korean text and extract data into a structured list of items.
+    The goal is to populate a table with the following specific columns:
     
+    1. 고객명 (Company Name)
+    2. 담당자 (Manager Name)
+    3. 연락처 (Phone Number)
+    4. 메일주소 (Email Address)
+    5. 제품 (Product Name)
+    6. 수량 (Quantity - as integer)
+    7. 납기일 (Due Date)
+    8. 비고 (Note - any other details, contexts, or price info)
+
     Text: "{text}"
     
     Required JSON Structure:
     {{
-      "summary": "One line summary of the interaction",
-      "customer": "Customer name or company implicated",
-      "intent": "One of: '견적 요청', '발주', '상담', '단가 문의', '기타'",
-      "items": [
+      "results": [
         {{
-          "product": "Product name or description",
-          "qty": Integer quantity (default 1 if not specified but implied),
-          "price_estimate": Integer price if mentioned, else 0
+          "company_name": "...",
+          "manager": "...",
+          "phone": "...",
+          "email": "...",
+          "product": "...",
+          "quantity": 0,
+          "due_date": "...",
+          "note": "..."
         }}
-      ],
-      "schedule": {{
-        "date": "Parsed date string for next action (YYYY-MM-DD or 'Next Wednesday' etc)",
-        "action": "Description of next action"
-      }}
+      ]
     }}
     
-    If specific fields are missing, make a best guess or leave empty/0.
+    Instructions:
+    - If multiple products are mentioned, create multiple objects in the 'results' list, repeating the customer info.
+    - If a field is not found, leave it as an empty string "" or 0 for quantity.
+    - Return ONLY the JSON object. No markdown.
     """
     
     try:
