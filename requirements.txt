@@ -7,3 +7,4 @@ pyarrow
 psycopg2-binary
 google-generativeai
 toml
+# Force rebuild v1.3

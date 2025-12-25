@@ -1425,7 +1425,7 @@ elif page == "AI CRM":
                                 st.session_state['ai_result'] = result  # Store result in session state
                                 
                     except Exception as e:
-                        st.error(f"시스템 오류 (v1.2): {e}")
+                        st.error(f"시스템 오류 (v1.3 - Rebuild): {e}")
                     
                     # Processing done
                     st.session_state['ai_processing'] = False
