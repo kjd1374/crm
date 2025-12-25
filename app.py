@@ -310,8 +310,20 @@ if page == "대시보드":
     import matplotlib.pyplot as plt
     import matplotlib.font_manager as fm
 
-    # Font setup for Korean (try Malgun Gothic on Windows)
-    plt.rcParams['font.family'] = 'Malgun Gothic'
+    # Font setup for Korean (Cross-platform)
+    import platform
+    system_name = platform.system()
+    
+    if system_name == 'Windows':
+        plt.rcParams['font.family'] = 'Malgun Gothic'
+    elif system_name == 'Darwin': # Mac
+        plt.rcParams['font.family'] = 'AppleGothic'
+    else: # Linux / Streamlit Cloud
+        # Try to find a Korean font, fallback to sans-serif
+        # Streamlit Cloud needs 'fonts-nanum' installed via packages.txt
+        plt.rcParams['font.family'] = 'NanumGothic'
+
+    # Minus sign support
     plt.rcParams['axes.unicode_minus'] = False
     
     with chart_col1:
