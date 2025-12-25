@@ -491,7 +491,10 @@ elif page == "고객 관리":
                     for log in logs:
                         with st.chat_message("user", avatar="👤"):
                             st.write(f"**{log.log_date}** | {log.status}")
-                            st.markdown(f"{log.content}")
+                            # Show content in expander to save space
+                            with st.expander("상담 내용 보기", expanded=False):
+                                st.markdown(log.content)
+                            
                             if log.next_action_date:
                                 st.caption(f"🔜 예정일: {log.next_action_date}")
                 else:
@@ -529,8 +532,11 @@ elif page == "고객 관리":
         
             with sub_tab3: # Quotes
                 quotes = utils.get_quotes_by_customer(db, customer.id)
-                if quotes:
-                    for q in quotes:
+                # Filter out 'Draft' quotes (User Request: Show only confirmed/sent quotes)
+                visible_quotes = [q for q in quotes if q.status != "Draft"]
+                
+                if visible_quotes:
+                    for q in visible_quotes:
                         with st.expander(f"📄 견적 #{q.id} ({q.status}) - ₩{q.total_amount:,}"):
                             st.write(f"**유효기간:** {q.valid_until}")
                             st.write(f"**메모:** {q.note}")
