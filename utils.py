@@ -826,11 +826,7 @@ def create_quote_from_ai(db: Session, customer_id: int, products_data: list):
                 cutting=bool(cutting_val),
                 remote_control=bool(remote_val),
                 due_date=str(item.get("due_date", "")),
-                note=item.get("note", "") # note is separate
-                # We don't have selected_options column in QuoteItem model? 
-                # Wait, I saw it in 'Quote List' viewer: i.selected_options
-                # Let me check QuoteItem model again.
-            )
+                note=item.get("note", "")
             )
             db.add(q_item)
             
