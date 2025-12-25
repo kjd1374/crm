@@ -1599,6 +1599,7 @@ elif page == "AI CRM":
                                     q_status, q_msg = utils.create_quote_from_ai(db, customer.id, products_data)
                                     if q_status == "success":
                                         st.success(f"완료! {msg}\n{q_msg}")
+                                        st.info("💡 생성된 견적은 '견적 관리' > '전체 견적 목록'에서 확인 및 수정할 수 있습니다.")
                                     else:
                                         st.error(f"견적 생성 실패: {q_msg}")
                                 else:

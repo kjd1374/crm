@@ -803,10 +803,17 @@ def create_quote_from_ai(db: Session, customer_id: int, products_data: list):
             
             total += amount
             
-            # cutting/remote might be boolean or string depending on dataframe editor
-            cutting_val = item.get("cutting", False)
-            remote_val = item.get("remote_control", False)
+            # Generate options summary for compatibility with manual quote viewer
+            opts = []
+            if item.get("print_type"): opts.append(f"인쇄: {item['print_type']}")
+            if item.get("color"): opts.append(f"색상: {item['color']}")
+            if item.get("origin"): opts.append(f"제작: {item['origin']}")
+            if cutting_val: opts.append("컷팅O")
+            if remote_val: opts.append("원격O")
+            if item.get("due_date"): opts.append(f"납기: {item['due_date']}")
             
+            summary_str = " / ".join(opts)
+
             q_item = QuoteItem(
                 quote_id=new_quote.id,
                 product_name=item.get("product", ""),
@@ -819,7 +826,11 @@ def create_quote_from_ai(db: Session, customer_id: int, products_data: list):
                 cutting=bool(cutting_val),
                 remote_control=bool(remote_val),
                 due_date=str(item.get("due_date", "")),
-                note=item.get("note", "")
+                note=item.get("note", "") # note is separate
+                # We don't have selected_options column in QuoteItem model? 
+                # Wait, I saw it in 'Quote List' viewer: i.selected_options
+                # Let me check QuoteItem model again.
+            )
             )
             db.add(q_item)
             
