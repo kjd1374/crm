@@ -1292,11 +1292,22 @@ elif page == "AI CRM":
     if 'gemini_api_key' not in st.session_state:
         st.session_state['gemini_api_key'] = ""
 
-    with st.expander("🔑 설정 (API Key)", expanded=False):
-        api_key_input = st.text_input("Google Gemini API Key", type="password", key="gemini_api_key_input")
-        if api_key_input:
-            st.session_state['gemini_api_key'] = api_key_input
-        st.caption("API Key는 저장되지 않으며, 세션 동안만 유지됩니다.")
+    # Check for secrets
+    has_secret_key = False
+    try:
+        if st.secrets["GEMINI_API_KEY"]:
+            has_secret_key = True
+    except:
+        pass
+
+    if has_secret_key:
+        st.success("🔑 API Key가 시스템 설정(Secrets)에서 로드되었습니다.")
+    else:
+        with st.expander("🔑 설정 (API Key)", expanded=True):
+            api_key_input = st.text_input("Google Gemini API Key", type="password", key="gemini_api_key_input")
+            if api_key_input:
+                st.session_state['gemini_api_key'] = api_key_input
+            st.caption("API Key는 저장되지 않으며, 세션 동안만 유지됩니다.")
 
     col_input, col_result = st.columns([1, 1], gap="medium")
     
