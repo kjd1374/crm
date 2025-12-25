@@ -1379,6 +1379,12 @@ elif page == "AI CRM":
                         else:
                             st.success("✅ 분석 완료!")
                             st.session_state['ai_result'] = result  # Store result in session state
+                            
+                except Exception as e:
+                    st.error(f"시스템 오류: {e}")
+                
+                # Processing done
+                st.session_state['ai_processing'] = False
 
         # Display Results (Persistent)
         if 'ai_result' in st.session_state and st.session_state['ai_result']:
