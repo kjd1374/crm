@@ -1422,10 +1422,11 @@ elif page == "AI CRM":
                      pass # Spacer
 
     # --- Bottom Section: Product List (Full Width) ---
+    st.divider() # Visual separation from columns
+    
     if 'ai_result' in st.session_state and st.session_state['ai_result']:
         result = st.session_state['ai_result']
         if "results" in result and result["results"]:
-            st.divider()
             st.markdown("##### 📦 제품 목록 (상세)")
             st.caption("아래 표에서 제품 정보를 자세히 확인하고 수정할 수 있습니다.")
 
