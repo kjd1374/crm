@@ -623,8 +623,13 @@ def analyze_text_with_gemini(api_key: str, text: str):
     
     genai.configure(api_key=api_key)
     
-    # Use 'gemini-1.5-flash' for speed and efficiency, or 'gemini-pro'
-    model = genai.GenerativeModel('gemini-1.5-flash')
+    # User requested specific model version
+    try:
+        model = genai.GenerativeModel('gemini-3-flash-preview')
+    except:
+        # Fallback if 3-preview is not available or typo, but try to honor request
+        # Actually, let's just set it. If it fails, the error will be caught in app.py
+        model = genai.GenerativeModel('gemini-3-flash-preview')
     
     prompt = f"""
     You are an expert CRM assistant. Analyze the following Korean text which describes a business consultation, quote request, or order.
