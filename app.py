@@ -1320,6 +1320,16 @@ elif page == "AI CRM":
         except Exception as e:
             # st.error(f"Debug: File Read Error - {e}")
             pass
+            
+    # 3. Last Resort: Import from api_config.py (Explicit Python File)
+    if not has_secret_key:
+        try:
+            import api_config
+            if hasattr(api_config, 'GEMINI_API_KEY'):
+                secret_api_key = api_config.GEMINI_API_KEY
+                has_secret_key = True
+        except ImportError:
+            pass
 
     if has_secret_key:
         st.success("✅ API Key가 설정파일에서 로드되었습니다!")
