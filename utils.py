@@ -3,6 +3,7 @@ from sqlalchemy import func
 from models import Customer, Order, Interaction, Product, Quote, QuoteItem
 from datetime import datetime, date
 import pandas as pd
+from database import get_db
 
 # --- Customer Operations ---
 def get_all_customers(db: Session):

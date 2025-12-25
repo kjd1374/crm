@@ -1378,38 +1378,43 @@ elif page == "AI CRM":
                             st.error(f"AI 분석 실패: {result['error']}")
                         else:
                             st.success("✅ 분석 완료!")
-                            
-                            # Flatten results for DataFrame
-                            if "results" in result and result["results"]:
-                                import pandas as pd
-                                df = pd.DataFrame(result["results"])
-                                
-                                # Rename columns for display
-                                column_map = {
-                                    "company_name": "고객사",
-                                    "industry": "업종",
-                                    "manager": "담당자",
-                                    "phone": "연락처",
-                                    "email": "이메일",
-                                    "product": "제품",
-                                    "quantity": "수량",
-                                    "due_date": "납기일",
-                                    "note": "비고"
-                                }
-                                df_display = df.rename(columns=column_map)
-                                
-                                # Reorder columns
-                                desired_order = ["고객사", "업종", "담당자", "연락처", "이메일", "제품", "수량", "납기일", "비고"]
-                                # Filter only existing columns
-                                existing_cols = [c for c in desired_order if c in df_display.columns]
-                                
-                                # Use data_editor for editing
-                                st.caption("💡 표의 내용을 더블클릭하여 직접 수정할 수 있습니다.")
-                                edited_df = st.data_editor(df_display[existing_cols], use_container_width=True, num_rows="dynamic")
-                                
-                                # Action Buttons
-                                st.divider()
-                                st.markdown("##### 📥 데이터 처리")
+                            st.session_state['ai_result'] = result  # Store result in session state
+
+        # Display Results (Persistent)
+        if 'ai_result' in st.session_state and st.session_state['ai_result']:
+            result = st.session_state['ai_result']
+            
+            # Flatten results for DataFrame
+            if "results" in result and result["results"]:
+                import pandas as pd
+                df = pd.DataFrame(result["results"])
+                
+                # Rename columns for display
+                column_map = {
+                    "company_name": "고객사",
+                    "industry": "업종",
+                    "manager": "담당자",
+                    "phone": "연락처",
+                    "email": "이메일",
+                    "product": "제품",
+                    "quantity": "수량",
+                    "due_date": "납기일",
+                    "note": "비고"
+                }
+                df_display = df.rename(columns=column_map)
+                
+                # Reorder columns
+                desired_order = ["고객사", "업종", "담당자", "연락처", "이메일", "제품", "수량", "납기일", "비고"]
+                # Filter only existing columns
+                existing_cols = [c for c in desired_order if c in df_display.columns]
+                
+                # Use data_editor for editing
+                st.caption("💡 표의 내용을 더블클릭하여 직접 수정할 수 있습니다.")
+                edited_df = st.data_editor(df_display[existing_cols], use_container_width=True, num_rows="dynamic")
+                
+                # Action Buttons
+                st.divider()
+                st.markdown("##### 📥 데이터 처리")
                                 
                                 # Customer Update Button
                                 if st.button("💾 고객 등록/업데이트", key="btn_upsert_customer"):
