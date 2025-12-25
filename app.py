@@ -17,7 +17,7 @@ def get_session():
 
 # --- Sidebar Navigation ---
 st.sidebar.title("💼 CRM 시스템")
-page = st.sidebar.radio("메뉴 이동", ["대시보드", "고객 관리", "견적 관리", "데이터 입력", "메신저 입력"], index=0)
+page = st.sidebar.radio("메뉴 이동", ["대시보드", "고객 관리", "견적 관리", "데이터 입력", "메신저 입력", "AI CRM"], index=0)
 
 st.sidebar.divider()
 # Reset Data Feature
@@ -1263,3 +1263,79 @@ elif page == "메신저 입력":
                  st.warning(f"{item['date'].strftime('%m/%d')} {item['sender']}: {item['text']}")
 
     db.close()
+
+# --- PAGE 6: AI CRM ---
+elif page == "AI CRM":
+    st.title("🤖 AI 상담/견적 비서 (Beta)")
+    
+    st.markdown("""
+    ### 🧠 자연어 처리 테스트
+    고객과의 상담 내용, 견적 요청, 발주 내용 등을 자유롭게 입력해보세요.  
+    AI가 내용을 분석하여 자동으로 구조화된 데이터로 변환해줍니다.
+    
+    *(현재는 UI 테스트 단계이며, 실제 처리를 위해서는 Gemini API 키가 필요합니다)*
+    """)
+    
+    # Secure API Key Input
+    if 'gemini_api_key' not in st.session_state:
+        st.session_state['gemini_api_key'] = ""
+
+    with st.expander("🔑 설정 (API Key)", expanded=False):
+        api_key_input = st.text_input("Google Gemini API Key", type="password", key="gemini_api_key_input")
+        if api_key_input:
+            st.session_state['gemini_api_key'] = api_key_input
+        st.caption("API Key는 저장되지 않으며, 세션 동안만 유지됩니다.")
+
+    col_input, col_result = st.columns([1, 1], gap="medium")
+    
+    with col_input:
+        st.subheader("📝 입력")
+        user_text = st.text_area("내용을 입력하세요", height=300, 
+            placeholder="예시:\n오늘 김철수 부장님이랑 통화함.\n아이폰15 프로 5개, 케이스 10개 견적 요청하심.\n단가는 아이폰 150만원, 케이스 2만원으로 맞춰드리기로 했고\n다음주 수요일까지 견적서 보내드리기로 함.")
+        
+        if st.button("🚀 AI 분석 실행", type="primary", use_container_width=True):
+            if not user_text:
+                st.warning("내용을 입력해주세요.")
+            else:
+                st.session_state['ai_processing'] = True
+                
+    with col_result:
+        st.subheader("📊 분석 결과")
+        if st.session_state.get('ai_processing'):
+            # Real AI Processing
+            with st.spinner("Gemini 1.5 Flash Model이 내용을 분석 중입니다..."):
+                try:
+                    # Get Key: Check Session, then Secrets, then Fallback (not recommended for git, but requested)
+                    api_key = st.session_state.get('gemini_api_key')
+                    if not api_key:
+                        # Try secrets
+                         try:
+                             api_key = st.secrets["GEMINI_API_KEY"]
+                         except:
+                             # Hardcoded fallback as requested by user for immediate testing
+                             # ⚠️ Ideally this should be removed before public commit if repo is public
+                             api_key = "AIzaSyDfkmKQmxf2t1u3xYDaDYFxom6-6kgrM04"
+                    
+                    if not api_key:
+                        st.error("API Key가 설정되지 않았습니다.")
+                        st.session_state['ai_processing'] = False
+                    else:
+                        result = utils.analyze_text_with_gemini(api_key, user_text)
+                        
+                        if "error" in result:
+                            st.error(f"AI 분석 실패: {result['error']}")
+                        else:
+                            st.success("✅ 분석 완료!")
+                            st.json(result)
+                            
+                            # Option to apply actions?
+                            st.divider()
+                            st.markdown("##### 📥 데이터 처리 (예정)")
+                            c1, c2 = st.columns(2)
+                            c1.button("💾 상담일지로 저장", disabled=True, help="기능 구현 예정")
+                            c2.button("📄 견적서 생성", disabled=True, help="기능 구현 예정")
+                            
+                except Exception as e:
+                    st.error(f"시스템 오류: {e}")
+            
+            st.session_state['ai_processing'] = False

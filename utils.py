@@ -610,4 +610,60 @@ def update_quote_status(db: Session, quote_id: int, status: str):
                 "견적 변환됨"
             )
         return True
+        return True
     return False
+
+# --- AI Integrations ---
+def analyze_text_with_gemini(api_key: str, text: str):
+    """
+    Uses Google Gemini API to parse natural language text into structured JSON.
+    """
+    import google.generativeai as genai
+    import json
+    
+    genai.configure(api_key=api_key)
+    
+    # Use 'gemini-1.5-flash' for speed and efficiency, or 'gemini-pro'
+    model = genai.GenerativeModel('gemini-1.5-flash')
+    
+    prompt = f"""
+    You are an expert CRM assistant. Analyze the following Korean text which describes a business consultation, quote request, or order.
+    Extract key information and return it ONLY as a JSON object. Do not include markdown code block markers (like ```json).
+    
+    Text: "{text}"
+    
+    Required JSON Structure:
+    {{
+      "summary": "One line summary of the interaction",
+      "customer": "Customer name or company implicated",
+      "intent": "One of: '견적 요청', '발주', '상담', '단가 문의', '기타'",
+      "items": [
+        {{
+          "product": "Product name or description",
+          "qty": Integer quantity (default 1 if not specified but implied),
+          "price_estimate": Integer price if mentioned, else 0
+        }}
+      ],
+      "schedule": {{
+        "date": "Parsed date string for next action (YYYY-MM-DD or 'Next Wednesday' etc)",
+        "action": "Description of next action"
+      }}
+    }}
+    
+    If specific fields are missing, make a best guess or leave empty/0.
+    """
+    
+    try:
+        response = model.generate_content(prompt)
+        raw_text = response.text.strip()
+        # Cleanup if model adds markdown
+        if raw_text.startswith("```json"):
+            raw_text = raw_text[7:]
+        if raw_text.startswith("```"):
+            raw_text = raw_text[3:]
+        if raw_text.endswith("```"):
+            raw_text = raw_text[:-3]
+            
+        return json.loads(raw_text)
+    except Exception as e:
+        return {"error": str(e)}
