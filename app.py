@@ -1432,7 +1432,6 @@ elif page == "AI CRM":
 
                             else:
                                 st.warning("분석된 데이터가 없습니다.")
-                            c2.button("📋 클립보드 복사", disabled=True, help="추후 구현")
                             
                 except Exception as e:
                     st.error(f"시스템 오류: {e}")
