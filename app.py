@@ -1404,9 +1404,13 @@ elif page == "AI CRM":
                             st.session_state['ai_processing'] = False
                         else:
                             # Fetch Product List for Smart Matching
-                            all_prods = utils.get_all_products(db)
-                            prod_names = [p.name for p in all_prods]
-                            
+                            db = get_session()
+                            try:
+                                all_prods = utils.get_all_products(db)
+                                prod_names = [p.name for p in all_prods]
+                            finally:
+                                db.close()
+                                
                             result = utils.analyze_text_with_gemini_v3(api_key, user_text, product_names=prod_names)
                             
                             if "error" in result:
