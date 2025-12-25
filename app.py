@@ -1477,11 +1477,23 @@ elif page == "AI CRM":
                 import pandas as pd
                 df = pd.DataFrame(result["results"])
                 
+                # Fetch Unit Prices from DB for Auto-Pricing
+                price_map = {}
+                db_pricing = get_session()
+                try:
+                    prods = utils.get_all_products(db_pricing)
+                    price_map = {p.name: p.unit_price for p in prods}
+                except:
+                    pass
+                finally:
+                    db_pricing.close()
+
                 # Filter product-related columns
                 # user requested: product / quantity / print_type / origin / color / due_date / cutting / remote / note
                 product_cols_map = {
                     "product": "제품",
                     "quantity": "수량",
+                    "unit_price": "단가", # New Field
                     "print_type": "인쇄방식",
                     "origin": "제작",
                     "color": "색상",
@@ -1497,10 +1509,21 @@ elif page == "AI CRM":
                     if k not in df.columns:
                         if k in ["cutting", "remote_control"]:
                             df[k] = False
-                        elif k == "quantity":
+                        elif k == "quantity" or k == "unit_price":
                             df[k] = 0
                         else:
                             df[k] = ""
+                            
+                # Auto-Populate Unit Price if Product Matches
+                if "product" in df.columns:
+                    # Use apply to lookup price_map
+                    def get_price(row):
+                        if row["unit_price"] and int(row["unit_price"]) > 0:
+                            return row["unit_price"] # Keep existing if any (rare from AI)
+                        prod_name = row.get("product")
+                        return price_map.get(prod_name, 0)
+                    
+                    df["unit_price"] = df.apply(get_price, axis=1)
                             
                 existing_product_keys = [k for k in product_cols_map.keys()]
                 df_products = df[existing_product_keys].copy()
@@ -1509,6 +1532,7 @@ elif page == "AI CRM":
                 # Define column configuration for better UX
                 column_config = {
                     "수량": st.column_config.NumberColumn("수량", min_value=1, step=1),
+                    "단가": st.column_config.NumberColumn("단가 (₩)", min_value=0, step=100, format="%d"),
                     "제품": st.column_config.TextColumn("제품", width="medium"),
                     "인쇄방식": st.column_config.SelectboxColumn("인쇄방식", options=["1도 단면", "1도 양면", "UV인쇄", "각인"], width="medium"),
                     "제작": st.column_config.SelectboxColumn("제작", options=["국내", "중국"], width="small"),

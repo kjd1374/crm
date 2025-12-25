@@ -796,8 +796,12 @@ def create_quote_from_ai(db: Session, customer_id: int, products_data: list):
         # 2. Create Items
         total = 0
         for item in products_data:
-            # item is a dict with keys: product, quantity, print_type, origin, color, due_date, cutting, remote_control, note
+            # item is a dict with keys: product, quantity, unit_price, print_type, origin, color, due_date, cutting, remote_control, note
             qty = int(item.get("quantity", 0))
+            price = int(item.get("unit_price", 0))
+            amount = qty * price
+            
+            total += amount
             
             # cutting/remote might be boolean or string depending on dataframe editor
             cutting_val = item.get("cutting", False)
@@ -807,8 +811,8 @@ def create_quote_from_ai(db: Session, customer_id: int, products_data: list):
                 quote_id=new_quote.id,
                 product_name=item.get("product", ""),
                 quantity=qty,
-                unit_price=0, # AI doesn't extract price yet
-                amount=0,
+                unit_price=price,
+                amount=amount,
                 print_type=item.get("print_type", ""),
                 origin=item.get("origin", ""),
                 color=item.get("color", ""),
@@ -819,8 +823,11 @@ def create_quote_from_ai(db: Session, customer_id: int, products_data: list):
             )
             db.add(q_item)
             
+        # Update Total Amount
+        new_quote.total_amount = total
+            
         db.commit()
-        return "success", f"견적(Quote #{new_quote.id})이 생성되었습니다."
+        return "success", f"견적(Quote #{new_quote.id})이 생성되었습니다. (총액: ₩{total:,})"
     except Exception as e:
         db.rollback()
         return "error", str(e)
