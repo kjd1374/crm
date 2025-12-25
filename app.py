@@ -1404,12 +1404,17 @@ elif page == "AI CRM":
                             st.session_state['ai_processing'] = False
                         else:
                             # Fetch Product List for Smart Matching
-                            db = get_session()
+                            # Explicitly handle DB session
+                            db_session = get_session()
                             try:
-                                all_prods = utils.get_all_products(db)
+                                all_prods = utils.get_all_products(db_session)
                                 prod_names = [p.name for p in all_prods]
+                                st.caption(f"(System: Loaded related products for AI matching)")
+                            except Exception as e:
+                                st.error(f"DB Error (Products): {e}")
+                                prod_names = []
                             finally:
-                                db.close()
+                                db_session.close()
                                 
                             result = utils.analyze_text_with_gemini_v3(api_key, user_text, product_names=prod_names)
                             
@@ -1420,7 +1425,7 @@ elif page == "AI CRM":
                                 st.session_state['ai_result'] = result  # Store result in session state
                                 
                     except Exception as e:
-                        st.error(f"시스템 오류: {e}")
+                        st.error(f"시스템 오류 (v1.2): {e}")
                     
                     # Processing done
                     st.session_state['ai_processing'] = False
@@ -1541,7 +1546,9 @@ elif page == "AI CRM":
                     if not c_data["company_name"]:
                         st.error("고객사명은 필수입니다.")
                     else:
-                        with next(utils.get_db()) as db:
+                        db = get_session()
+                        try:
+                            # 2. Upsert Customer
                             # 2. Upsert Customer
                             status, msg, customer = utils.upsert_customer_from_ai(db, c_data)
                             
@@ -1572,3 +1579,7 @@ elif page == "AI CRM":
                                         st.error(f"견적 생성 실패: {q_msg}")
                                 else:
                                     st.warning("저장할 제품 목록이 없습니다.")
+                        except Exception as e:
+                            st.error(f"저장 중 오류 발생: {e}")
+                        finally:
+                            db.close()
