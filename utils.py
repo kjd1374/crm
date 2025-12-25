@@ -675,17 +675,24 @@ def analyze_text_with_gemini_v3(api_key: str, text: str):
     
     prompt = f"""
     You are an expert CRM assistant. Analyze the following Korean text and extract data into a structured list of items.
-    The goal is to populate a table with the following specific columns:
+    The goal is to populate a table with the following specific columns for product order details:
     
     1. 고객명 (Company Name)
     2. 업종 (Industry Type e.g. '제조업', 'IT', '유통', '기타')
     3. 담당자 (Manager Name)
     4. 연락처 (Phone Number)
     5. 메일주소 (Email Address)
+    
+    Product Details:
     6. 제품 (Product Name)
     7. 수량 (Quantity - as integer)
-    8. 납기일 (Due Date)
-    9. 비고 (Note - any other details, contexts, or price info)
+    8. 인쇄방식 (Print Type) - MUST be one of ["1도 단면", "1도 양면", "UV인쇄", "각인"]. Infer from context if possible, or leave empty.
+    9. 제작 (Origin) - MUST be one of ["국내", "중국"]. Infer from context (e.g., 'Domestic', 'China'), default to empty if unsure.
+    10. 색상 (Color) - Extract color info.
+    11. 납기일 (Due Date)
+    12. 컷팅 (Cutting) - Return "O" if cutting is required/mentioned, "X" if explicitly described as not needed, or leave empty/default to "X".
+    13. 원격조종 (Remote Control) - Return "O" if remote control mentioned, "X" otherwise.
+    14. 비고 (Note) - Other details.
 
     Text: "{text}"
     
@@ -700,7 +707,12 @@ def analyze_text_with_gemini_v3(api_key: str, text: str):
           "email": "...",
           "product": "...",
           "quantity": 0,
+          "print_type": "...",
+          "origin": "...",
+          "color": "...",
           "due_date": "...",
+          "cutting": false, 
+          "remote_control": false,
           "note": "..."
         }}
       ]
@@ -708,7 +720,8 @@ def analyze_text_with_gemini_v3(api_key: str, text: str):
     
     Instructions:
     - If multiple products are mentioned, create multiple objects in the 'results' list, repeating the customer info.
-    - If a field is not found, leave it as an empty string "" or 0 for quantity.
+    - If a field is not found, leave it as an empty string "" (or 0 for qty).
+    - For 'cutting' and 'remote_control', return boolean true/false in JSON, which I will convert to Checkbox.
     - Return ONLY the JSON object. No markdown.
     """
     

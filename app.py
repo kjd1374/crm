@@ -1436,22 +1436,44 @@ elif page == "AI CRM":
                 df = pd.DataFrame(result["results"])
                 
                 # Filter product-related columns
+                # user requested: product / quantity / print_type / origin / color / due_date / cutting / remote / note
                 product_cols_map = {
                     "product": "제품",
                     "quantity": "수량",
+                    "print_type": "인쇄방식",
+                    "origin": "제작",
+                    "color": "색상",
                     "due_date": "납기일",
+                    "cutting": "컷팅",
+                    "remote_control": "원격조종",
                     "note": "비고"
                 }
                 
                 # Ensure columns exist in df before renaming
-                existing_product_keys = [k for k in product_cols_map.keys() if k in df.columns]
+                # Force ensure columns exist even if AI missed them, to show the structure
+                for k in product_cols_map.keys():
+                    if k not in df.columns:
+                        if k in ["cutting", "remote_control"]:
+                            df[k] = False
+                        elif k == "quantity":
+                            df[k] = 0
+                        else:
+                            df[k] = ""
+                            
+                existing_product_keys = [k for k in product_cols_map.keys()]
                 df_products = df[existing_product_keys].copy()
                 df_products = df_products.rename(columns=product_cols_map)
                 
                 # Define column configuration for better UX
                 column_config = {
                     "수량": st.column_config.NumberColumn("수량", min_value=1, step=1),
-                    "제품": st.column_config.TextColumn("제품", width="large"),
+                    "제품": st.column_config.TextColumn("제품", width="medium"),
+                    "인쇄방식": st.column_config.SelectboxColumn("인쇄방식", options=["1도 단면", "1도 양면", "UV인쇄", "각인"], width="medium"),
+                    "제작": st.column_config.SelectboxColumn("제작", options=["국내", "중국"], width="small"),
+                    "색상": st.column_config.TextColumn("색상", width="small"),
+                    "납기일": st.column_config.TextColumn("납기일", width="medium"),
+                    "컷팅": st.column_config.CheckboxColumn("컷팅", width="small"),
+                    "원격조종": st.column_config.CheckboxColumn("원격조종", width="small"),
                     "비고": st.column_config.TextColumn("비고", width="large"),
                 }
                 
