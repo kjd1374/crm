@@ -1320,7 +1320,7 @@ elif page == "AI CRM":
                         st.error("API Key가 설정되지 않았습니다.")
                         st.session_state['ai_processing'] = False
                     else:
-                        result = utils.analyze_text_with_gemini(api_key, user_text)
+                        result = utils.analyze_text_with_gemini_v3(api_key, user_text)
                         
                         if "error" in result:
                             st.error(f"AI 분석 실패: {result['error']}")

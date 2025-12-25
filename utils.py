@@ -614,7 +614,7 @@ def update_quote_status(db: Session, quote_id: int, status: str):
     return False
 
 # --- AI Integrations ---
-def analyze_text_with_gemini(api_key: str, text: str):
+def analyze_text_with_gemini_v3(api_key: str, text: str):
     """
     Uses Google Gemini API to parse natural language text into structured JSON.
     """
