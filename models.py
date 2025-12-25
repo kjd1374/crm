@@ -76,8 +76,9 @@ class Quote(Base):
     note = Column(String)
     
     # Relationships
+    # Relationships
     customer = relationship("Customer", back_populates="quotes")
-    items = relationship("QuoteItem", back_populates="quote", cascade="all, delete-orphan")
+    quote_items = relationship("QuoteItem", back_populates="quote", cascade="all, delete-orphan")
 
 class QuoteItem(Base):
     __tablename__ = "quote_items"
@@ -101,4 +102,4 @@ class QuoteItem(Base):
     # Additional options JSON if needed
     selected_options = Column(String, default="") 
     
-    quote = relationship("Quote", back_populates="items")
+    quote = relationship("Quote", back_populates="quote_items")
