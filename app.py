@@ -1430,7 +1430,7 @@ elif page == "AI CRM":
             if "results" in result and result["results"]:
                 st.divider() # Visual separation
                 st.markdown("##### 📦 제품 목록 (상세)")
-                st.caption("아래 표에서 제품 정보를 자세히 확인하고 수정할 수 있습니다.")
+                st.caption("아래 표에서 제품 정보를 자세히 확인하고 수정할 수 있습니다. (DB schema updated)")
 
                 import pandas as pd
                 df = pd.DataFrame(result["results"])
