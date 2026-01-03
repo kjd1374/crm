@@ -1307,7 +1307,7 @@ elif page == "메신저 입력":
 
 # --- PAGE 6: AI CRM ---
 elif page == "AI CRM":
-    st.title("🤖 AI 상담/견적 비서 (Beta)")
+    st.title("🤖 AI 상담/견적 비서 (v4.1)")
     
     st.markdown("""
     ### 🧠 자연어 처리 테스트
