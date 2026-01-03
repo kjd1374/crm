@@ -517,8 +517,12 @@ elif page == "고객 관리":
                     for log in logs:
                         with st.chat_message("user", avatar="👤"):
                             st.write(f"**{log.log_date}** | {log.status}")
-                            # Show content in expander to save space
-                            with st.expander("상담 내용 보기", expanded=False):
+                            # Show category badge
+                            if log.category:
+                                st.caption(f"🏷️ {log.category}")
+                            
+                            # Show content in expander
+                            with st.expander(f"{log.summary or '상담 내용 보기'}", expanded=False):
                                 st.markdown(log.content)
                             
                             if log.next_action_date:
@@ -1575,9 +1579,12 @@ elif page == "AI CRM":
                             db = get_session()
                             try:
                                 s, m, c = utils.upsert_customer_from_ai(db, save_c_data)
-                                st.toast(f"고객: {m}")
-                                utils.add_interaction(db, c.id, f_con, None, "완료", category=classification, summary=f_sum)
-                                st.success("✅ 저장되었습니다!")
+                                if s == "error":
+                                    st.error(f"고객 저장 실패: {m}")
+                                else:
+                                    st.toast(f"고객: {m}")
+                                    utils.add_interaction(db, c.id, f_con, None, "완료", category=classification, summary=f_sum)
+                                    st.success("✅ 저장되었습니다!")
                             except Exception as e: st.error(str(e))
                             finally: db.close()
 

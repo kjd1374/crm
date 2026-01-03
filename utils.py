@@ -702,8 +702,8 @@ def upsert_customer_from_ai(db: Session, data: dict):
     """
     try:
         # Check required
-        c_name = data.get("company_name", "").strip()
-        manager = data.get("manager", "").strip()
+        c_name = (data.get("company_name") or "").strip()
+        manager = (data.get("manager") or "").strip()
         
         if not c_name or c_name == "Unknown":
             return "error", "고객명(회사명)이 없습니다.", None
@@ -943,3 +943,23 @@ def analyze_text_with_gemini_v4(api_key: str, text: str, product_names: list[str
         return json.loads(raw_text)
     except Exception as e:
         return {"error": str(e)}
+
+def reset_database(db: Session):
+    """
+    Drops all tables and re-initializes the database.
+    WARNING: ALL DATA WILL BE LOST.
+    """
+    try:
+        from database import engine, Base, init_db
+        # Close session first to release locks
+        db.close()
+        
+        # Drop all
+        Base.metadata.drop_all(bind=engine)
+        
+        # Re-create
+        init_db()
+        return True
+    except Exception as e:
+        print(f"Reset Error: {e}")
+        return False
