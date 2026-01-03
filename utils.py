@@ -95,8 +95,19 @@ def run_db_migration(db: Session):
         logs.append("✅ Customers: Added 'email'")
     except Exception as e:
         db.rollback()
-        # Ignore if exists
         pass
+
+    # 3. Interactions Migration (New: Category/Summary)
+    int_cols = [("category", "VARCHAR"), ("summary", "VARCHAR")]
+    for col, dtype in int_cols:
+        try:
+            db.execute(text(f"ALTER TABLE interactions ADD COLUMN {col} {dtype}"))
+            db.commit()
+            logs.append(f"✅ Interactions: Added '{col}'")
+        except:
+            db.rollback()
+            pass
+
     
     return logs
 
@@ -329,7 +340,7 @@ def reset_database(db: Session):
         return False
 
 # --- Interaction Operations ---
-def add_interaction(db: Session, customer_id: int, content: str, next_action_date: date, status: str, log_date: date = None):
+def add_interaction(db: Session, customer_id: int, content: str, next_action_date: date, status: str, category: str = "General", summary: str = "", log_date: date = None):
     if log_date is None:
         log_date = date.today()
         
@@ -338,6 +349,8 @@ def add_interaction(db: Session, customer_id: int, content: str, next_action_dat
         content=content,
         next_action_date=next_action_date,
         status=status,
+        category=category,
+        summary=summary,
         log_date=log_date
     )
     db.add(new_interaction)
@@ -857,90 +870,76 @@ def delete_customer(db: Session, customer_id: int):
         print(f"Delete Customer Error: {e}")
         return False
 
-def analyze_text_with_gemini_v3(api_key: str, text: str, product_names: list[str] = None):
+def analyze_text_with_gemini_v4(api_key: str, text: str, product_names: list[str] = None):
     """
-    Uses Google Gemini API to parse natural language text into structured JSON.
-    V3 Update: Accepts product_names list for Smart Matching.
+    V4: Classify type (Quote/Order/Strategy/Memo) and Extract Summary.
+    Returns: JSON with 'classification', 'summary', 'customer', 'products'
     """
     import google.generativeai as genai
     import json
     
     genai.configure(api_key=api_key)
     
-    # User requested specific model version
     try:
         model = genai.GenerativeModel('gemini-3-flash-preview')
     except:
-        # Fallback if 3-preview is not available or typo, but try to honor request
-        # Actually, let's just set it. If it fails, the error will be caught in app.py
-        model = genai.GenerativeModel('gemini-3-flash-preview')
+        model = genai.GenerativeModel('gemini-2.0-flash-exp') # Fallback
     
-    # Format valid items for prompt
     valid_products_str = ", ".join(product_names) if product_names else "None supplied"
     
     prompt = f"""
-    You are an expert CRM assistant. Analyze the following Korean text and extract data into a structured list of items.
-    The goal is to populate a table with the following specific columns:
+    You are an expert CRM assistant. Analyze the Korean text.
     
-    1. 고객명 (Company Name)
-    2. 업종 (Industry Type e.g. '제조업', 'IT', '유통', '기타')
-    3. 담당자 (Manager Name)
-    4. 연락처 (Phone Number)
-    5. 메일주소 (Email Address)
-    6. 제품 (Product Name)
-       - Strict Match Rule: Compare extracted product name with this VALID LIST: [{valid_products_str}]
-       - If a match is found (even with slight spelling differences, spaces, or aliases), use the EXACT NAME from the VALID LIST.
-       - If NO match is found, output "없음" (None).
-    7. 수량 (Quantity - as integer)
-    8. 인쇄방식 (Print Type - Must be one of ["1도 단면", "1도 양면", "UV인쇄", "각인", "없음"])
-    9. 제작 (Origin - Must be one of ["국내", "중국"])
-    10. 색상 (Color)
-    11. 컷팅 (Cutting - true/false. Keywords: 컷팅O, 컷팅함 -> true)
-    12. 원격조종 (Remote Control - true/false. Keywords: 원격O -> true)
-    13. 납기일 (Due Date - e.g. "1월 5일")
-    14. 비고 (Note - any other details, contexts, or price info)
-
-    Text: "{text}"
+    1. CLASSIFY the text into one of: ["ESTIMATE_REQUEST", "ORDER", "STRATEGY", "CONSULTATION", "GENERAL"]
+       - ESTIMATE_REQUEST: Asking for price, quote, estimate.
+       - ORDER: Confirming an order, buying.
+       - STRATEGY: Internal plans, sales tactics, approaches.
+       - CONSULTATION: Meeting notes, simple calls, status updates.
+       - GENERAL: Anything else.
+       
+    2. SUMMARIZE the content in 1 sentence (Korean).
     
+    3. EXTRACT Customer Info.
+    
+    4. EXTRACT Product List (Strict Matching).
+       Valid Products: [{valid_products_str}]
+       
     Required JSON Structure:
     {{
-      "results": [
-        {{
+      "classification": "...", 
+      "summary": "...",
+      "customer": {{
           "company_name": "...",
           "industry": "...",
           "manager": "...",
           "phone": "...",
-          "email": "...",
+          "email": "..."
+      }},
+      "products": [
+        {{
           "product": "...",
           "quantity": 0,
+          "unit_price": 0,
           "print_type": "...",
           "origin": "...",
           "color": "...",
           "due_date": "...",
-          "cutting": false, 
+          "cutting": false,
           "remote_control": false,
           "note": "..."
         }}
       ]
     }}
     
-    Instructions:
-    - If multiple products are mentioned, create multiple objects in the 'results' list, repeating the customer info.
-    - If a field is not found, leave it as an empty string "" or 0 for quantity.
-    - Return ONLY the JSON object. No markdown.
+    Text: "{text}"
     """
     
     try:
         response = model.generate_content(prompt)
         raw_text = response.text.strip()
-        # Cleanup if model adds markdown
-        if raw_text.startswith("```json"):
-            raw_text = raw_text[7:]
-        if raw_text.startswith("```"):
-            raw_text = raw_text[3:]
-        if raw_text.endswith("```"):
-            raw_text = raw_text[:-3]
-            
+        if raw_text.startswith("```json"): raw_text = raw_text[7:]
+        if raw_text.startswith("```"): raw_text = raw_text[3:]
+        if raw_text.endswith("```"): raw_text = raw_text[:-3]
         return json.loads(raw_text)
     except Exception as e:
         return {"error": str(e)}

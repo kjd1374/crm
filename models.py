@@ -49,6 +49,8 @@ class Interaction(Base):
     content = Column(String)
     next_action_date = Column(Date)
     status = Column(String) # e.g., 'Contacting', 'Proposed', 'Contracted', 'On Hold'
+    category = Column(String) # e.g., 'Quote', 'Order', 'Strategy', 'General'
+    summary = Column(String)  # AI Summary or Manual Subject
 
     # Relationship
     customer = relationship("Customer", back_populates="interactions")

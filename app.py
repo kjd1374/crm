@@ -1416,7 +1416,7 @@ elif page == "AI CRM":
                             finally:
                                 db_session.close()
                                 
-                            result = utils.analyze_text_with_gemini_v3(api_key, user_text, product_names=prod_names)
+                            result = utils.analyze_text_with_gemini_v4(api_key, user_text, product_names=prod_names)
                             
                             if "error" in result:
                                 st.error(f"AI 분석 실패: {result['error']}")
@@ -1434,177 +1434,155 @@ elif page == "AI CRM":
             if 'ai_result' in st.session_state and st.session_state['ai_result']:
                 result = st.session_state['ai_result']
                 
-                if "results" in result and result["results"]:
-                    import pandas as pd
-                    # We need to recreate df here or just use result dict
-                    first_row = result["results"][0] if result["results"] else {}
+                # --- V4 Adapter ---
+                classification = result.get("classification", "GENERAL")
+                summary = result.get("summary", "")
+                c_data = result.get("customer", {})
+                products = result.get("products", [])
 
-                    # 1. Common Information (Customer)
-                    st.markdown("##### 🏢 고객 정보 (공통)")
-                    st.caption("고객 정보는 상단에서 한 번만 확인하세요.")
+                if "results" in result and "classification" not in result:
+                     st.warning("⚠️ 이전 버전의 분석 결과입니다. 다시 분석해주세요.")
+                else:
+                    st.divider()
+                    st.markdown(f"#### 🏷️ 분석 유형: :blue[{classification}]")
+                    st.caption(f"📝 요약(AI): {summary}")
+
+                    # 1. Customer Info (Editable)
+                    st.markdown("##### 🏢 고객 정보")
                     
-                    c0_1, c0_2 = st.columns([1, 2])
-                    with c0_1:
-                        # Auto-fill current date/time
-                        current_time_str = datetime.now().strftime("%Y-%m-%d %H:%M")
-                        st.text_input("📅 문의일시 (자동생성)", value=current_time_str)
-                    with c0_2:
-                        st.text_input("고객사", value=first_row.get("company_name", ""), key="ai_cust_company")
+                    c1, c2 = st.columns([1, 2])
+                    new_c_name = c1.text_input("고객사", c_data.get("company_name", ""), key="ai_c_name")
+                    new_c_mgr = c2.text_input("담당자", c_data.get("manager", ""), key="ai_c_mgr")
                     
-                    c1, c2, c3 = st.columns(3)
-                    with c1:
-                        st.text_input("업종", value=first_row.get("industry", ""), key="ai_cust_industry")
-                    with c2:
-                        st.text_input("담당자", value=first_row.get("manager", ""), key="ai_cust_manager")
-                    with c3:
-                        st.text_input("연락처", value=first_row.get("phone", ""), key="ai_cust_phone")
-                        
-                    c4, c5 = st.columns(2)
-                    with c4:
-                        st.text_input("이메일", value=first_row.get("email", ""), key="ai_cust_email")
-                    with c5:
-                         pass # Spacer
+                    c3, c4, c5 = st.columns(3)
+                    new_c_ind = c3.text_input("업종", c_data.get("industry", ""), key="ai_c_ind")
+                    new_c_ph = c4.text_input("연락처", c_data.get("phone", ""), key="ai_c_ph")
+                    new_c_mail = c5.text_input("이메일", c_data.get("email", ""), key="ai_c_mail")
+                    
+                    save_c_data = {
+                        "company_name": new_c_name, "industry": new_c_ind,
+                        "manager": new_c_mgr, "phone": new_c_ph, "email": new_c_mail
+                    }
+
+                    # Determine Mode
+                    target_mode = "MEMO"
+                    if classification in ["ESTIMATE_REQUEST", "ORDER"] or products:
+                        target_mode = "QUOTE"
 
     # --- Bottom Section: Product List (Full Width) ---
     with st.container():
-        if 'ai_result' in st.session_state and st.session_state['ai_result']:
-            result = st.session_state['ai_result']
-            if "results" in result and result["results"]:
-                st.divider() # Visual separation
-                st.markdown("##### 📦 제품 목록 (상세)")
-                st.caption("아래 표에서 제품 정보를 자세히 확인하고 수정할 수 있습니다. (DB schema updated)")
-
-                import pandas as pd
-                df = pd.DataFrame(result["results"])
-                
-                # Fetch Unit Prices from DB for Auto-Pricing
-                price_map = {}
-                db_pricing = get_session()
-                try:
-                    prods = utils.get_all_products(db_pricing)
-                    price_map = {p.name: p.unit_price for p in prods}
-                except:
-                    pass
-                finally:
-                    db_pricing.close()
-
-                # Filter product-related columns
-                # user requested: product / quantity / print_type / origin / color / due_date / cutting / remote / note
-                product_cols_map = {
-                    "product": "제품",
-                    "quantity": "수량",
-                    "unit_price": "단가", # New Field
-                    "print_type": "인쇄방식",
-                    "origin": "제작",
-                    "color": "색상",
-                    "due_date": "납기일",
-                    "cutting": "컷팅",
-                    "remote_control": "원격조종",
-                    "note": "비고"
-                }
-                
-                # Ensure columns exist in df before renaming
-                # Force ensure columns exist even if AI missed them, to show the structure
-                for k in product_cols_map.keys():
-                    if k not in df.columns:
-                        if k in ["cutting", "remote_control"]:
-                            df[k] = False
-                        elif k == "quantity" or k == "unit_price":
-                            df[k] = 0
-                        else:
-                            df[k] = ""
-                            
-                # Auto-Populate Unit Price if Product Matches
-                if "product" in df.columns:
-                    # Use apply to lookup price_map
-                    def get_price(row):
-                        if row["unit_price"] and int(row["unit_price"]) > 0:
-                            return row["unit_price"] # Keep existing if any (rare from AI)
-                        prod_name = row.get("product")
-                        return price_map.get(prod_name, 0)
-                    
-                    df["unit_price"] = df.apply(get_price, axis=1)
-                            
-                existing_product_keys = [k for k in product_cols_map.keys()]
-                df_products = df[existing_product_keys].copy()
-                df_products = df_products.rename(columns=product_cols_map)
-                
-                # Define column configuration for better UX
-                column_config = {
-                    "수량": st.column_config.NumberColumn("수량", min_value=1, step=1),
-                    "단가": st.column_config.NumberColumn("단가 (₩)", min_value=0, step=100, format="%d"),
-                    "제품": st.column_config.TextColumn("제품", width="medium"),
-                    "인쇄방식": st.column_config.SelectboxColumn("인쇄방식", options=["1도 단면", "1도 양면", "UV인쇄", "각인"], width="medium"),
-                    "제작": st.column_config.SelectboxColumn("제작", options=["국내", "중국"], width="small"),
-                    "색상": st.column_config.TextColumn("색상", width="small"),
-                    "납기일": st.column_config.TextColumn("납기일", width="medium"),
-                    "컷팅": st.column_config.CheckboxColumn("컷팅", width="small"),
-                    "원격조종": st.column_config.CheckboxColumn("원격조종", width="small"),
-                    "비고": st.column_config.TextColumn("비고", width="large"),
-                }
-                
-                edited_df = st.data_editor(
-                    df_products, 
-                    use_container_width=True, 
-                    num_rows="dynamic",
-                    column_config=column_config
-                )
-            else:
-                st.warning("분석된 데이터가 없습니다.")
-
-            # Action Buttons (Restored & Updated)
-            if "results" in result and result["results"]:
+        # Re-check ai_result availability just in case
+        if 'ai_result' in st.session_state and st.session_state['ai_result'] and not ("results" in st.session_state['ai_result'] and "classification" not in st.session_state['ai_result']):
+             
+             if target_mode == "QUOTE":
                 st.divider()
-                st.markdown("##### 📥 데이터 처리")
+                st.markdown("##### 📦 제품 목록 (견적/발주)")
                 
-                if st.button("💾 고객 및 견적 등록", key="btn_upsert_all", type="primary", use_container_width=True):
-                    # 1. Gather Customer Data from Inputs (using keys)
-                    c_data = {
-                        "company_name": st.session_state.get("ai_cust_company"),
-                        "industry": st.session_state.get("ai_cust_industry"),
-                        "manager": st.session_state.get("ai_cust_manager"),
-                        "phone": st.session_state.get("ai_cust_phone"),
-                        "email": st.session_state.get("ai_cust_email")
-                    }
+                rows = products if products else [{"product": "", "quantity": 1}]
+                df = pd.DataFrame(rows)
+                
+                # Config & Renaming
+                product_cols_map = {
+                    "product": "제품", "quantity": "수량", "unit_price": "단가",
+                    "print_type": "인쇄방식", "origin": "제작", "color": "색상",
+                    "due_date": "납기일", "cutting": "컷팅", "remote_control": "원격조종", "note": "비고"
+                }
+
+                # Ensure columns
+                for k in product_cols_map.keys():
+                        if k not in df.columns:
+                            if k == "cutting" or k == "remote_control": df[k] = False
+                            elif k == "quantity" or k == "unit_price": df[k] = 0
+                            else: df[k] = ""
+                
+                # Auto-Price
+                price_map = {}
+                db_p = get_session()
+                try: price_map = {p.name: p.unit_price for p in utils.get_all_products(db_p)}
+                except: pass
+                finally: db_p.close()
+
+                if "product" in df.columns:
+                    def get_price(row):
+                        if row.get("unit_price") and int(row.get("unit_price")) > 0: return row["unit_price"]
+                        return price_map.get(row.get("product"), 0)
+                    df["unit_price"] = df.apply(get_price, axis=1)
+
+                df_show = df[list(product_cols_map.keys())].rename(columns=product_cols_map)
+                
+                col_cfg = {
+                    "수량": st.column_config.NumberColumn("수량", min_value=1),
+                    "단가": st.column_config.NumberColumn("단가", format="%d"),
+                    "제품": st.column_config.TextColumn("제품", width="medium"),
+                    "인쇄방식": st.column_config.SelectboxColumn("인쇄방식", options=["1도 단면", "1도 양면", "UV인쇄", "각인"]),
+                    "제작": st.column_config.SelectboxColumn("제작", options=["국내", "중국"]),
+                    "컷팅": st.column_config.CheckboxColumn("컷팅"),
+                    "원격조종": st.column_config.CheckboxColumn("원격조종"),
+                    "비고": st.column_config.TextColumn("비고", width="large")
+                }
+                
+                edited_df = st.data_editor(df_show, use_container_width=True, num_rows="dynamic", column_config=col_cfg)
+                
+                if st.button("💾 견적/발주 등록", type="primary"):
+                        if not new_c_name: st.error("고객명 필수")
+                        else:
+                            db = get_session()
+                            try:
+                                s, m, c = utils.upsert_customer_from_ai(db, save_c_data)
+                                st.toast(f"고객: {m}")
+                                
+                                rev_map = {v: k for k, v in product_cols_map.items()}
+                                p_data = []
+                                for i, r in edited_df.iterrows():
+                                    it = {}
+                                    for k, v in r.items():
+                                        if k in rev_map: it[rev_map[k]] = v
+                                    p_data.append(it)
+                                
+                                qs, qm = utils.create_quote_from_ai(db, c.id, p_data)
+                                if qs == "success": st.success(qm)
+                                else: st.error(qm)
+                            except Exception as e: st.error(str(e))
+                            finally: db.close()
+
+             else: # MEMO
+                st.divider()
+                st.markdown("##### 📝 상담/전략 이력 저장")
+                
+                f_sum = st.text_input("제목/요약", value=summary)
+                f_con = st.text_area("상세 내용", value=user_text, height=200)
+                
+                if st.button("💾 로그 저장", type="primary"):
+                        if not new_c_name: st.error("고객명 필수")
+                        else:
+                            db = get_session()
+                            try:
+                                s, m, c = utils.upsert_customer_from_ai(db, save_c_data)
+                                st.toast(f"고객: {m}")
+                                utils.add_interaction(db, c.id, f_con, None, "완료", category=classification, summary=f_sum)
+                                st.success("✅ 저장되었습니다!")
+                            except Exception as e: st.error(str(e))
+                            finally: db.close()
+
+    # --- SEARCH SECTION ---
+    st.divider()
+    with st.expander("🔎 AI 상담/전략 이력 검색", expanded=True):
+            col_s1, col_s2 = st.columns([1, 4])
+            s_type = col_s1.selectbox("유형", ["전체", "STRATEGY", "CONSULTATION", "GENERAL", "ESTIMATE_REQUEST", "ORDER"])
+            s_kw = col_s2.text_input("검색어 (내용/고객명)")
+            
+            if s_kw or s_type:
+                db = get_session()
+                try:
+                    q = db.query(Interaction).join(Customer)
+                    if s_type != "전체": q = q.filter(Interaction.category == s_type)
+                    if s_kw: q = q.filter((Interaction.content.contains(s_kw)) | (Interaction.summary.contains(s_kw)) | (Customer.company_name.contains(s_kw)))
                     
-                    if not c_data["company_name"]:
-                        st.error("고객사명은 필수입니다.")
-                    else:
-                        db = get_session()
-                        try:
-                            # 2. Upsert Customer
-                            # 2. Upsert Customer
-                            status, msg, customer = utils.upsert_customer_from_ai(db, c_data)
-                            
-                            if status == "error":
-                                st.error(f"고객 저장 실패: {msg}")
-                            else:
-                                st.toast(f"고객: {msg}", icon="✅")
-                                
-                                # 3. Create Quote with Items
-                                # Map back from Korean to English keys for the utility function
-                                reverse_map = {v: k for k, v in product_cols_map.items()} # product_cols_map is defined above
-                                
-                                products_data = []
-                                for index, row in edited_df.iterrows():
-                                    item = {}
-                                    for col_name, val in row.items():
-                                        # Dataframe columns are Korean (e.g., '제품'), map to 'product'
-                                        if col_name in reverse_map:
-                                            key = reverse_map[col_name]
-                                            item[key] = val
-                                    products_data.append(item)
-                                
-                                if products_data:
-                                    q_status, q_msg = utils.create_quote_from_ai(db, customer.id, products_data)
-                                    if q_status == "success":
-                                        st.success(f"완료! {msg}\n{q_msg}")
-                                        st.info("💡 생성된 견적은 '견적 관리' > '전체 견적 목록'에서 확인 및 수정할 수 있습니다.")
-                                    else:
-                                        st.error(f"견적 생성 실패: {q_msg}")
-                                else:
-                                    st.warning("저장할 제품 목록이 없습니다.")
-                        except Exception as e:
-                            st.error(f"저장 중 오류 발생: {e}")
-                        finally:
-                            db.close()
+                    logs = q.order_by(Interaction.log_date.desc()).limit(15).all()
+                    if logs:
+                        for l in logs:
+                            with st.expander(f"[{l.category}] {l.customer.company_name} - {l.summary or '제목없음'} ({l.log_date})"):
+                                st.write(l.content)
+                                st.caption(f"담당: {l.customer.sales_rep}")
+                    else: st.info("검색 결과가 없습니다.")
+                finally: db.close()
