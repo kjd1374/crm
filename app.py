@@ -317,7 +317,24 @@ if page == "대시보드":
         
     st.divider()
 
-    # --- Analysis Section ---
+    # --- Initial Setup & Migration ---
+@st.cache_resource
+def run_auto_migration():
+    try:
+        from database import get_db
+        import utils
+        db = next(get_db())
+        logs = utils.run_db_migration(db)
+        db.close()
+        return logs
+    except Exception as e:
+        return [f"Migration Error: {e}"]
+
+migration_logs = run_auto_migration()
+if migration_logs and "Error" in str(migration_logs):
+    st.error(f"DB Update Failed: {migration_logs}")
+
+# --- Analysis Section ---
     st.subheader("📈 매출 분석")
     chart_col1, chart_col2 = st.columns(2)
     
